@@ -26,17 +26,28 @@ export function registerNodeHandlers() {
         "pnpm --version || (corepack enable pnpm && pnpm --version) || (npm install -g pnpm@latest-10 && pnpm --version)",
       ),
     ]);
-    // Default to mac download url.
-    let nodeDownloadUrl = "https://nodejs.org/dist/v22.14.0/node-v22.14.0.pkg";
-    if (platform() == "win32") {
+    const nodeVersion = "v22.14.0";
+    let nodeDownloadUrl = `https://nodejs.org/dist/${nodeVersion}/node-${nodeVersion}.pkg`;
+    if (platform() === "win32") {
       if (arch() === "arm64" || arch() === "arm") {
         nodeDownloadUrl =
-          "https://nodejs.org/dist/v22.14.0/node-v22.14.0-arm64.msi";
+          `https://nodejs.org/dist/${nodeVersion}/node-${nodeVersion}-arm64.msi`;
       } else {
         // x64 is the most common architecture for Windows so it's the
         // default download url.
         nodeDownloadUrl =
-          "https://nodejs.org/dist/v22.14.0/node-v22.14.0-x64.msi";
+          `https://nodejs.org/dist/${nodeVersion}/node-${nodeVersion}-x64.msi`;
+      }
+    } else if (platform() === "linux") {
+      if (arch() === "arm64") {
+        nodeDownloadUrl =
+          `https://nodejs.org/dist/${nodeVersion}/node-${nodeVersion}-linux-arm64.tar.xz`;
+      } else if (arch() === "arm") {
+        nodeDownloadUrl =
+          `https://nodejs.org/dist/${nodeVersion}/node-${nodeVersion}-linux-armv7l.tar.xz`;
+      } else {
+        nodeDownloadUrl =
+          `https://nodejs.org/dist/${nodeVersion}/node-${nodeVersion}-linux-x64.tar.xz`;
       }
     }
     return { nodeVersion, pnpmVersion, nodeDownloadUrl };
