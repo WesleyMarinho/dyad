@@ -17,7 +17,7 @@ export function registerNodeHandlers() {
       arch(),
     );
     // Run checks in parallel
-    const [nodeVersion, pnpmVersion] = await Promise.all([
+    const [installedNodeVersion, pnpmVersion] = await Promise.all([
       runShellCommand("node --version"),
       // First, check if pnpm is installed.
       // If not, try to install it using corepack.
@@ -26,20 +26,31 @@ export function registerNodeHandlers() {
         "pnpm --version || (corepack enable pnpm && pnpm --version) || (npm install -g pnpm@latest-10 && pnpm --version)",
       ),
     ]);
-    // Default to mac download url.
-    let nodeDownloadUrl = "https://nodejs.org/dist/v22.14.0/node-v22.14.0.pkg";
-    if (platform() == "win32") {
+    const targetNodeVersion = "v22.14.0";
+    let nodeDownloadUrl = `https://nodejs.org/dist/${targetNodeVersion}/node-${targetNodeVersion}.pkg`;
+    if (platform() === "win32") {
       if (arch() === "arm64" || arch() === "arm") {
         nodeDownloadUrl =
-          "https://nodejs.org/dist/v22.14.0/node-v22.14.0-arm64.msi";
+          `https://nodejs.org/dist/${targetNodeVersion}/node-${targetNodeVersion}-arm64.msi`;
       } else {
         // x64 is the most common architecture for Windows so it's the
         // default download url.
         nodeDownloadUrl =
-          "https://nodejs.org/dist/v22.14.0/node-v22.14.0-x64.msi";
+          `https://nodejs.org/dist/${targetNodeVersion}/node-${targetNodeVersion}-x64.msi`;
+      }
+    } else if (platform() === "linux") {
+      if (arch() === "arm64") {
+        nodeDownloadUrl =
+          `https://nodejs.org/dist/${targetNodeVersion}/node-${targetNodeVersion}-linux-arm64.tar.xz`;
+      } else if (arch() === "arm") {
+        nodeDownloadUrl =
+          `https://nodejs.org/dist/${targetNodeVersion}/node-${targetNodeVersion}-linux-armv7l.tar.xz`;
+      } else {
+        nodeDownloadUrl =
+          `https://nodejs.org/dist/${targetNodeVersion}/node-${targetNodeVersion}-linux-x64.tar.xz`;
       }
     }
-    return { nodeVersion, pnpmVersion, nodeDownloadUrl };
+    return { nodeVersion: installedNodeVersion, pnpmVersion, nodeDownloadUrl };
   });
 
   ipcMain.handle("reload-env-path", async (): Promise<void> => {
