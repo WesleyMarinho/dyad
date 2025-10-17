@@ -1,0 +1,1 @@
+console.log('child send exists', !!process.send); process.send && process.send({msg: 'hello'}); setTimeout(() => process.exit(0), 10);
