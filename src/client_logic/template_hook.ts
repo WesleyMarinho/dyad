@@ -9,13 +9,13 @@ export async function neonTemplateHook({
   appId: number;
   appName: string;
 }) {
-  console.log("Creating Neon project");
+  
   const neonProject = await IpcClient.getInstance().createNeonProject({
     name: appName,
     appId: appId,
   });
 
-  console.log("Neon project created", neonProject);
+  
   await IpcClient.getInstance().setAppEnvVars({
     appId: appId,
     envVars: [
@@ -41,5 +41,5 @@ export async function neonTemplateHook({
       },
     ],
   });
-  console.log("App env vars set");
+  
 }

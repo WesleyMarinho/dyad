@@ -15,7 +15,7 @@ import { showError, showMcpConsentToast } from "./lib/toast";
 import { IpcClient } from "./ipc/ipc_client";
 
 // @ts-ignore
-console.log("Running in mode:", import.meta.env.MODE);
+
 
 interface MyMeta extends Record<string, unknown> {
   showErrorToast: boolean;

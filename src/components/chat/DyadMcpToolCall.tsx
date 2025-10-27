@@ -1,5 +1,5 @@
+import { ChevronsDownUp, ChevronsUpDown, Wrench } from "lucide-react";
 import React, { useMemo, useState } from "react";
-import { Wrench, ChevronsUpDown, ChevronsDownUp } from "lucide-react";
 import { CodeHighlight } from "./CodeHighlight";
 
 interface DyadMcpToolCallProps {
@@ -25,6 +25,20 @@ export const DyadMcpToolCall: React.FC<DyadMcpToolCallProps> = ({
     } catch (e) {
       console.error("Error parsing JSON for dyad-mcp-tool-call", e);
       return raw;
+    }
+  }, [expanded, raw]);
+
+  // Extract a preview from the JSON when collapsed
+  const preview = useMemo(() => {
+    if (expanded) return "";
+    try {
+      const parsed = JSON.parse(raw);
+      const keys = Object.keys(parsed);
+      if (keys.length === 0) return "{}";
+      if (keys.length === 1) return `{ ${keys[0]}: ... }`;
+      return `{ ${keys.slice(0, 2).join(", ")}${keys.length > 2 ? ", ..." : ""} }`;
+    } catch (e) {
+      return raw.substring(0, 50) + (raw.length > 50 ? "..." : "");
     }
   }, [expanded, raw]);
 
@@ -59,7 +73,11 @@ export const DyadMcpToolCall: React.FC<DyadMcpToolCallProps> = ({
             {toolName}
           </span>
         ) : null}
-        {/* Intentionally no preview or content when collapsed */}
+        {!expanded && preview && (
+          <span className="text-xs text-gray-500 dark:text-gray-400 font-mono">
+            {preview}
+          </span>
+        )}
       </div>
 
       {/* JSON content */}

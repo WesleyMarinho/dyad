@@ -1,14 +1,13 @@
+import { and, eq } from "drizzle-orm";
 import { IpcMainInvokeEvent } from "electron";
 import log from "electron-log";
 import { db } from "../../db";
 import { mcpServers, mcpToolConsents } from "../../db/schema";
-import { eq, and } from "drizzle-orm";
 import { createLoggedHandler } from "./safe_handle";
 
-import { resolveConsent } from "../utils/mcp_consent";
-import { getStoredConsent } from "../utils/mcp_consent";
-import { mcpManager } from "../utils/mcp_manager";
 import { CreateMcpServer, McpServerUpdate, McpTool } from "../ipc_types";
+import { getStoredConsent, resolveConsent } from "../utils/mcp_consent";
+import { mcpManager } from "../utils/mcp_manager";
 
 const logger = log.scope("mcp_handlers");
 const handle = createLoggedHandler(logger);
@@ -86,18 +85,49 @@ export function registerMcpHandlers() {
       serverId: number,
     ): Promise<McpTool[]> => {
       try {
-        const client = await mcpManager.getClient(serverId);
-        const remoteTools = await client.tools();
-        const tools = await Promise.all(
-          Object.entries(remoteTools).map(async ([name, tool]) => ({
-            name,
-            description: tool.description ?? null,
-            consent: await getStoredConsent(serverId, name),
-          })),
-        );
+        logger.log(`Listing tools for MCP server ${serverId}`);
+        
+        // Timeout de 30 segundos para listar tools
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          setTimeout(() => {
+            reject(new Error(`Timeout listing tools for MCP server ${serverId}`));
+          }, 30_000);
+        });
+
+        const listToolsPromise = async () => {
+          const client = await mcpManager.getClient(serverId);
+          const remoteTools = await client.tools();
+          const tools = await Promise.all(
+            Object.entries(remoteTools).map(async ([name, tool]) => ({
+              name,
+              description: tool.description ?? null,
+              consent: await getStoredConsent(serverId, name),
+            })),
+          );
+          return tools;
+        };
+
+        const tools = await Promise.race([listToolsPromise(), timeoutPromise]);
+        logger.log(`Successfully listed ${tools.length} tools for MCP server ${serverId}`);
         return tools;
       } catch (e) {
-        logger.error("Failed to list tools", e);
+        logger.error(`Failed to list tools for MCP server ${serverId}:`, e);
+        
+        // Se for erro de timeout ou conexão, tenta limpar o client
+        if (e instanceof Error && (
+          e.message.includes('timeout') || 
+          e.message.includes('Timeout') ||
+          e.message.includes('Body Timeout') ||
+          e.message.includes('terminated')
+        )) {
+          logger.warn(`Disposing MCP client ${serverId} due to timeout/connection error`);
+          try {
+            mcpManager.dispose(serverId);
+          } catch (disposeError) {
+            logger.error(`Error disposing MCP client ${serverId}:`, disposeError);
+          }
+        }
+        
         return [];
       }
     },

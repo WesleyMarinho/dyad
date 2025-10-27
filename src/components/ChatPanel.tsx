@@ -3,7 +3,6 @@ import { useAtomValue, useSetAtom } from "jotai";
 import {
   chatMessagesByIdAtom,
   chatStreamCountByIdAtom,
-  isStreamingByIdAtom,
 } from "../atoms/chatAtoms";
 import { IpcClient } from "@/ipc/ipc_client";
 
@@ -31,11 +30,11 @@ export function ChatPanel({
   const [isVersionPaneOpen, setIsVersionPaneOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const streamCountById = useAtomValue(chatStreamCountByIdAtom);
-  const isStreamingById = useAtomValue(isStreamingByIdAtom);
   // Reference to store the processed prompt so we don't submit it twice
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
+  const initialScrollDoneRef = useRef(false);
 
   // Scroll-related properties
   const [isUserScrolling, setIsUserScrolling] = useState(false);
@@ -95,9 +94,13 @@ export function ChatPanel({
 
   useEffect(() => {
     const streamCount = chatId ? (streamCountById.get(chatId) ?? 0) : 0;
-    console.log("streamCount - scrolling to bottom", streamCount);
+    
     scrollToBottom();
   }, [chatId, chatId ? (streamCountById.get(chatId) ?? 0) : 0]);
+
+  useEffect(() => {
+    initialScrollDoneRef.current = false;
+  }, [chatId]);
 
   useEffect(() => {
     const container = messagesContainerRef.current;
@@ -133,24 +136,26 @@ export function ChatPanel({
   }, [fetchChatMessages]);
 
   const messages = chatId ? (messagesById.get(chatId) ?? []) : [];
-  const isStreaming = chatId ? (isStreamingById.get(chatId) ?? false) : false;
-
-  // Auto-scroll effect when messages change during streaming
+  // Auto-scroll effect when messages change
   useEffect(() => {
-    if (
-      !isUserScrolling &&
-      isStreaming &&
-      messagesContainerRef.current &&
-      messages.length > 0
-    ) {
-      // Only auto-scroll if user is close to bottom
-      if (isNearBottom(280)) {
-        requestAnimationFrame(() => {
-          scrollToBottom("instant");
-        });
-      }
+    if (!messagesContainerRef.current || messages.length === 0) {
+      return;
     }
-  }, [messages, isUserScrolling, isStreaming]);
+
+    if (!initialScrollDoneRef.current) {
+      initialScrollDoneRef.current = true;
+      requestAnimationFrame(() => {
+        scrollToBottom("instant");
+      });
+      return;
+    }
+
+    if (!isUserScrolling && isNearBottom(280)) {
+      requestAnimationFrame(() => {
+        scrollToBottom("instant");
+      });
+    }
+  }, [messages, isUserScrolling]);
 
   return (
     <div className="flex flex-col h-full">

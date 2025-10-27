@@ -17,6 +17,7 @@ import {
 import { useSettings } from "@/hooks/useSettings";
 import { useContextPaths } from "@/hooks/useContextPaths";
 import type { ContextPathResult } from "@/lib/schemas";
+import { DEFAULT_EXCLUDE_GLOBS } from "@/shared/contextDefaults";
 
 export function ContextFilesPicker() {
   const { settings } = useSettings();
@@ -32,6 +33,7 @@ export function ContextFilesPicker() {
   const [newPath, setNewPath] = useState("");
   const [newAutoIncludePath, setNewAutoIncludePath] = useState("");
   const [newExcludePath, setNewExcludePath] = useState("");
+  const defaultExcludeSet = new Set(DEFAULT_EXCLUDE_GLOBS);
 
   const addPath = () => {
     if (
@@ -254,6 +256,10 @@ export function ContextFilesPicker() {
                   </Tooltip>
                 </TooltipProvider>
               </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Common folders like <code>node_modules/**</code> are ignored
+                automatically.
+              </p>
             </div>
 
             <div className="flex w-full max-w-sm items-center space-x-2 mt-4">
@@ -307,6 +313,7 @@ export function ContextFilesPicker() {
                           size="icon"
                           onClick={() => removeExcludePath(p.globPath)}
                           data-testid="exclude-context-files-remove-button"
+                          disabled={defaultExcludeSet.has(p.globPath)}
                         >
                           <Trash2 className="size-4" />
                         </Button>

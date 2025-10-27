@@ -16,19 +16,30 @@ export function ChatErrorBox({
   error: string;
   isDyadProEnabled: boolean;
 }) {
+  const showProCta = isDyadProEnabled;
+
   if (error.includes("doesn't have a free quota tier")) {
     return (
       <ChatErrorContainer onDismiss={onDismiss}>
         {error}
-        <span className="ml-1">
-          <ExternalLink
-            href="https://dyad.sh/pro?utm_source=dyad-app&utm_medium=app&utm_campaign=free-quota-error"
-            variant="primary"
-          >
-            Access with Dyad Pro
+        <div className="mt-2 space-y-2 space-x-2">
+          {showProCta && (
+            <ExternalLink
+              href="https://dyad.sh/pro?utm_source=dyad-app&utm_medium=app&utm_campaign=free-quota-error"
+              variant="primary"
+            >
+              Access with Dyad Pro
+            </ExternalLink>
+          )}
+          <ExternalLink href="https://dyad.sh/docs/help/ai-rate-limit">
+            Troubleshooting guide
           </ExternalLink>
-        </span>{" "}
-        or switch to another model.
+        </div>
+        {!showProCta && (
+          <p className="mt-2 text-sm text-red-700">
+            Switch to another model or add your own API key in Settings -&gt; Models.
+          </p>
+        )}
       </ChatErrorContainer>
     );
   }
@@ -44,16 +55,17 @@ export function ChatErrorBox({
       <ChatErrorContainer onDismiss={onDismiss}>
         {error}
         <div className="mt-2 space-y-2 space-x-2">
-          <ExternalLink
-            href="https://dyad.sh/pro?utm_source=dyad-app&utm_medium=app&utm_campaign=rate-limit-error"
-            variant="primary"
-          >
-            Upgrade to Dyad Pro
-          </ExternalLink>
-
           <ExternalLink href="https://dyad.sh/docs/help/ai-rate-limit">
             Troubleshooting guide
           </ExternalLink>
+          {showProCta && (
+            <ExternalLink
+              href="https://dyad.sh/pro?utm_source=dyad-app&utm_medium=app&utm_campaign=rate-limit-error"
+              variant="primary"
+            >
+              Upgrade to Dyad Pro
+            </ExternalLink>
+          )}
         </div>
       </ChatErrorContainer>
     );
@@ -62,16 +74,22 @@ export function ChatErrorBox({
   if (error.includes("LiteLLM Virtual Key expected")) {
     return (
       <ChatInfoContainer onDismiss={onDismiss}>
-        <span>
-          Looks like you don't have a valid Dyad Pro key.{" "}
-          <ExternalLink
-            href="https://dyad.sh/pro?utm_source=dyad-app&utm_medium=app&utm_campaign=invalid-pro-key-error"
-            variant="primary"
-          >
-            Upgrade to Dyad Pro
-          </ExternalLink>{" "}
-          today.
-        </span>
+        {showProCta ? (
+          <span>
+            Looks like you don't have a valid Dyad Pro key.{" "}
+            <ExternalLink
+              href="https://dyad.sh/pro?utm_source=dyad-app&utm_medium=app&utm_campaign=invalid-pro-key-error"
+              variant="primary"
+            >
+              Upgrade to Dyad Pro
+            </ExternalLink>{" "}
+            today.
+          </span>
+        ) : (
+          <span>
+            A Dyad Pro key is not configured. Add your own provider API key in Settings -&gt; Models or disable Pro features to continue.
+          </span>
+        )}
       </ChatInfoContainer>
     );
   }
@@ -99,7 +117,10 @@ export function ChatErrorBox({
     <ChatErrorContainer onDismiss={onDismiss}>
       {error}
       <div className="mt-2 space-y-2 space-x-2">
-        {!isDyadProEnabled && (
+        <ExternalLink href="https://www.dyad.sh/docs/faq">
+          Read docs
+        </ExternalLink>
+        {showProCta && (
           <ExternalLink
             href="https://dyad.sh/pro?utm_source=dyad-app&utm_medium=app&utm_campaign=general-error"
             variant="primary"
@@ -107,10 +128,6 @@ export function ChatErrorBox({
             Upgrade to Dyad Pro
           </ExternalLink>
         )}
-
-        <ExternalLink href="https://www.dyad.sh/docs/faq">
-          Read docs
-        </ExternalLink>
       </div>
     </ChatErrorContainer>
   );

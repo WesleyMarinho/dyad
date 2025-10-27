@@ -11,10 +11,11 @@ import {
   getDyadWriteTags,
 } from "../utils/dyad_tag_parser";
 import { getTypeScriptCachePath } from "@/paths/paths";
+import { simpleSpawn } from "../utils/simpleSpawn";
 
 const logger = log.scope("tsc");
 
-export async function generateProblemReport({
+async function runTscWorker({
   fullResponse,
   appPath,
 }: {
@@ -78,4 +79,52 @@ export async function generateProblemReport({
 
     worker.postMessage(input);
   });
+}
+
+export async function generateProblemReport({
+  fullResponse,
+  appPath,
+}: {
+  fullResponse: string;
+  appPath: string;
+}): Promise<ProblemReport> {
+  const attemptWorker = async (): Promise<ProblemReport> => {
+    return runTscWorker({ fullResponse, appPath });
+  };
+
+  try {
+    return await attemptWorker();
+  } catch (error) {
+    const errorMessage =
+      error instanceof Error ? error.message : String(error);
+    if (!errorMessage.includes("Cannot find module 'typescript'")) {
+      throw error;
+    }
+
+    logger.warn(
+      `TypeScript is missing for ${appPath}. Attempting automatic installation.`,
+    );
+
+    try {
+      await simpleSpawn({
+        command:
+          "pnpm add -D typescript || npm install -D typescript --legacy-peer-deps",
+        cwd: appPath,
+        successMessage: "Installed TypeScript for problem checker",
+        errorPrefix: "Failed to install TypeScript automatically",
+        env: { ...process.env, LANG: "en_US.UTF-8" } as Record<
+          string,
+          string
+        >,
+      });
+    } catch (installError) {
+      logger.error(
+        `Automatic TypeScript installation failed for ${appPath}:`,
+        installError,
+      );
+      throw error;
+    }
+
+    return attemptWorker();
+  }
 }

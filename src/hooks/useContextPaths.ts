@@ -3,6 +3,25 @@ import { useAtomValue } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { IpcClient } from "@/ipc/ipc_client";
 import { GlobPath, ContextPathResults } from "@/lib/schemas";
+import { DEFAULT_EXCLUDE_GLOBS } from "@/shared/contextDefaults";
+
+function ensureDefaultExcludePaths(
+  results: ContextPathResults,
+): ContextPathResults {
+  const existing = new Set(results.excludePaths.map((path) => path.globPath));
+  const defaults = DEFAULT_EXCLUDE_GLOBS.filter(
+    (globPath) => !existing.has(globPath),
+  ).map((globPath) => ({
+    globPath,
+    files: 0,
+    tokens: 0,
+  }));
+
+  return {
+    ...results,
+    excludePaths: [...results.excludePaths, ...defaults],
+  };
+}
 
 export function useContextPaths() {
   const queryClient = useQueryClient();
@@ -16,13 +35,14 @@ export function useContextPaths() {
     queryKey: ["context-paths", appId],
     queryFn: async () => {
       if (!appId)
-        return {
+        return ensureDefaultExcludePaths({
           contextPaths: [],
           smartContextAutoIncludes: [],
           excludePaths: [],
-        };
+        });
       const ipcClient = IpcClient.getInstance();
-      return ipcClient.getChatContextResults({ appId });
+      const data = await ipcClient.getChatContextResults({ appId });
+      return ensureDefaultExcludePaths(data);
     },
     enabled: !!appId,
   });

@@ -124,14 +124,14 @@ describe("getDyadWriteTags", () => {
     const result =
       getDyadWriteTags(`<dyad-write path="src/components/TodoItem.tsx" description="Creating a component for individual todo items">
 import React from "react";
-console.log("TodoItem");
+
 </dyad-write>`);
     expect(result).toEqual([
       {
         path: "src/components/TodoItem.tsx",
         description: "Creating a component for individual todo items",
         content: `import React from "react";
-console.log("TodoItem");`,
+`,
       },
     ]);
   });
@@ -141,7 +141,7 @@ console.log("TodoItem");`,
       getDyadWriteTags(`<dyad-write path="src/components/TodoItem.tsx" description="Creating a component for individual todo items">
 \`\`\`tsx
 import React from "react";
-console.log("TodoItem");
+
 \`\`\`
 </dyad-write>
 `);
@@ -150,7 +150,7 @@ console.log("TodoItem");
         path: "src/components/TodoItem.tsx",
         description: "Creating a component for individual todo items",
         content: `import React from "react";
-console.log("TodoItem");`,
+`,
       },
     ]);
   });
@@ -688,7 +688,7 @@ describe("processFullResponse", () => {
     vi.mocked(fs.mkdirSync).mockImplementation(() => undefined);
     vi.mocked(fs.writeFileSync).mockImplementation(() => undefined);
 
-    const response = `<dyad-write path="src/file1.js">console.log('Hello');</dyad-write>`;
+    const response = `<dyad-write path="src/file1.js"></dyad-write>`;
 
     const result = await processFullResponseActions(response, 1, {
       chatSummary: undefined,
@@ -701,7 +701,7 @@ describe("processFullResponse", () => {
     );
     expect(fs.writeFileSync).toHaveBeenCalledWith(
       "/mock/user/data/path/mock-app-path/src/file1.js",
-      "console.log('Hello');",
+      "",
     );
     expect(git.add).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -738,7 +738,7 @@ describe("processFullResponse", () => {
     vi.mocked(fs.writeFileSync).mockImplementation(() => undefined);
 
     const response = `
-    <dyad-write path="src/file1.js">console.log('First file');</dyad-write>
+    <dyad-write path="src/file1.js"></dyad-write>
     <dyad-write path="src/utils/file2.js">export const add = (a, b) => a + b;</dyad-write>
     <dyad-write path="src/components/Button.tsx">
     import React from 'react';
@@ -769,7 +769,7 @@ describe("processFullResponse", () => {
     expect(fs.writeFileSync).toHaveBeenNthCalledWith(
       1,
       "/mock/user/data/path/mock-app-path/src/file1.js",
-      "console.log('First file');",
+      "",
     );
     expect(fs.writeFileSync).toHaveBeenNthCalledWith(
       2,
@@ -971,7 +971,7 @@ describe("removeDyadTags", () => {
   });
 
   it("should remove a single dyad-write tag", () => {
-    const text = `Before text <dyad-write path="src/file.js">console.log('hello');</dyad-write> After text`;
+    const text = `Before text <dyad-write path="src/file.js"></dyad-write> After text`;
     const result = removeDyadTags(text);
     expect(result).toBe("Before text  After text");
   });
@@ -1073,25 +1073,25 @@ describe("hasUnclosedDyadWrite", () => {
   });
 
   it("should return false when dyad-write tag is properly closed", () => {
-    const text = `<dyad-write path="src/file.js">console.log('hello');</dyad-write>`;
+    const text = `<dyad-write path="src/file.js"></dyad-write>`;
     const result = hasUnclosedDyadWrite(text);
     expect(result).toBe(false);
   });
 
   it("should return true when dyad-write tag is not closed", () => {
-    const text = `<dyad-write path="src/file.js">console.log('hello');`;
+    const text = `<dyad-write path="src/file.js">`;
     const result = hasUnclosedDyadWrite(text);
     expect(result).toBe(true);
   });
 
   it("should return false when dyad-write tag with attributes is properly closed", () => {
-    const text = `<dyad-write path="src/file.js" description="A test file">console.log('hello');</dyad-write>`;
+    const text = `<dyad-write path="src/file.js" description="A test file"></dyad-write>`;
     const result = hasUnclosedDyadWrite(text);
     expect(result).toBe(false);
   });
 
   it("should return true when dyad-write tag with attributes is not closed", () => {
-    const text = `<dyad-write path="src/file.js" description="A test file">console.log('hello');`;
+    const text = `<dyad-write path="src/file.js" description="A test file">`;
     const result = hasUnclosedDyadWrite(text);
     expect(result).toBe(true);
   });
@@ -1166,7 +1166,7 @@ const regex = /<div[^>]*>/g;
 
   it("should handle text before and after dyad-write tags", () => {
     const text = `Some text before the tag
-<dyad-write path="src/file.js">console.log('hello');</dyad-write>
+<dyad-write path="src/file.js"></dyad-write>
 Some text after the tag`;
     const result = hasUnclosedDyadWrite(text);
     expect(result).toBe(false);
@@ -1174,7 +1174,7 @@ Some text after the tag`;
 
   it("should handle unclosed tag with text after", () => {
     const text = `Some text before the tag
-<dyad-write path="src/file.js">console.log('hello');
+<dyad-write path="src/file.js">
 Some text after the unclosed tag`;
     const result = hasUnclosedDyadWrite(text);
     expect(result).toBe(true);

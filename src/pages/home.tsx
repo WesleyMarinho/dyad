@@ -1,20 +1,10 @@
-import { useNavigate, useSearch } from "@tanstack/react-router";
-import { useAtom, useSetAtom } from "jotai";
-import { homeChatInputValueAtom } from "../atoms/chatAtoms";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
-import { IpcClient } from "@/ipc/ipc_client";
-import { generateCuteAppName } from "@/lib/utils";
-import { useLoadApps } from "@/hooks/useLoadApps";
-import { useSettings } from "@/hooks/useSettings";
-import { SetupBanner } from "@/components/SetupBanner";
 import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
-import { useState, useEffect, useCallback } from "react";
-import { useStreamChat } from "@/hooks/useStreamChat";
 import { HomeChatInput } from "@/components/chat/HomeChatInput";
-import { usePostHog } from "posthog-js/react";
+import { ImportAppButton } from "@/components/ImportAppButton";
+import { SetupBanner } from "@/components/SetupBanner";
 import { PrivacyBanner } from "@/components/TelemetryBanner";
-import { INSPIRATION_PROMPTS } from "@/prompts/inspiration_prompts";
-import { useAppVersion } from "@/hooks/useAppVersion";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -22,17 +12,26 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useTheme } from "@/contexts/ThemeContext";
-import { Button } from "@/components/ui/button";
-import { ExternalLink } from "lucide-react";
-import { ImportAppButton } from "@/components/ImportAppButton";
-import { showError } from "@/lib/toast";
+import { useAppVersion } from "@/hooks/useAppVersion";
 import { invalidateAppQuery } from "@/hooks/useLoadApp";
+import { useLoadApps } from "@/hooks/useLoadApps";
+import { useSettings } from "@/hooks/useSettings";
+import { useStreamChat } from "@/hooks/useStreamChat";
+import { IpcClient } from "@/ipc/ipc_client";
+import { showError } from "@/lib/toast";
+import { generateCuteAppName } from "@/lib/utils";
+import { INSPIRATION_PROMPTS } from "@/prompts/inspiration_prompts";
 import { useQueryClient } from "@tanstack/react-query";
+import { useNavigate, useSearch } from "@tanstack/react-router";
+import { useAtom, useSetAtom } from "jotai";
+import { ExternalLink } from "lucide-react";
+import { usePostHog } from "posthog-js/react";
+import { useCallback, useEffect, useState } from "react";
+import { homeChatInputValueAtom } from "../atoms/chatAtoms";
 
+import { neonTemplateHook } from "@/client_logic/template_hook";
 import type { FileAttachment } from "@/ipc/ipc_types";
 import { NEON_TEMPLATE_IDS } from "@/shared/templates";
-import { neonTemplateHook } from "@/client_logic/template_hook";
-import { ProBanner } from "@/components/ProBanner";
 
 // Adding an export for attachments
 export interface HomeSubmitOptions {
@@ -249,7 +248,6 @@ export default function HomePage() {
             </span>
           </button>
         </div>
-        <ProBanner />
       </div>
       <PrivacyBanner />
 

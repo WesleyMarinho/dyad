@@ -20,6 +20,8 @@ import {
 } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
 import { IpcMainInvokeEvent } from "electron";
+import { detectGeminiCli } from "../utils/gemini_cli_detector";
+import { detectCodexCli } from "../utils/codex_cli_detector";
 
 const logger = log.scope("language_model_handlers");
 const handle = createLoggedHandler(logger);
@@ -29,6 +31,32 @@ export function registerLanguageModelHandlers() {
     "get-language-model-providers",
     async (): Promise<LanguageModelProvider[]> => {
       return getLanguageModelProviders();
+    },
+  );
+
+  handle(
+    "language-models:detect-gemini-cli",
+    async (
+      event: IpcMainInvokeEvent,
+      options?: { explicitPath?: string; autoDetect?: boolean },
+    ) => {
+      return detectGeminiCli({
+        explicitPath: options?.explicitPath,
+        autoDetect: options?.autoDetect,
+      });
+    },
+  );
+
+  handle(
+    "language-models:detect-codex-cli",
+    async (
+      event: IpcMainInvokeEvent,
+      options?: { explicitPath?: string; autoDetect?: boolean },
+    ) => {
+      return detectCodexCli({
+        explicitPath: options?.explicitPath,
+        autoDetect: options?.autoDetect,
+      });
     },
   );
 

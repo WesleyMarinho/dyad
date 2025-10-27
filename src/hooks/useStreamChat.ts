@@ -20,7 +20,6 @@ import { useLoadApp } from "./useLoadApp";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useVersions } from "./useVersions";
 import { showExtraFilesToast } from "@/lib/toast";
-import { useProposal } from "./useProposal";
 import { useSearch } from "@tanstack/react-router";
 import { useRunApp } from "./useRunApp";
 import { useCountTokens } from "./useCountTokens";
@@ -33,9 +32,15 @@ export function getRandomNumberId() {
   return Math.floor(Math.random() * 1_000_000_000_000_000);
 }
 
+interface UseStreamChatOptions {
+  hasChatId?: boolean;
+  refreshProposal?: (chatId: number) => void | Promise<void>;
+}
+
 export function useStreamChat({
   hasChatId = true,
-}: { hasChatId?: boolean } = {}) {
+  refreshProposal,
+}: UseStreamChatOptions = {}) {
   const setMessagesById = useSetAtom(chatMessagesByIdAtom);
   const isStreamingById = useAtomValue(isStreamingByIdAtom);
   const setIsStreamingById = useSetAtom(isStreamingByIdAtom);
@@ -61,8 +66,6 @@ export function useStreamChat({
     const { id } = useSearch({ from: "/chat" });
     chatId = id;
   }
-  let { refreshProposal } = hasChatId ? useProposal(chatId) : useProposal();
-
   const streamMessage = useCallback(
     async ({
       prompt,
@@ -139,7 +142,7 @@ export function useStreamChat({
                 posthog,
               });
             }
-            refreshProposal(chatId);
+            refreshProposal?.(chatId);
 
             refetchUserBudget();
 
@@ -193,6 +196,7 @@ export function useStreamChat({
       }
     },
     [
+      refreshProposal,
       setMessagesById,
       setIsStreamingById,
       setIsPreviewOpen,

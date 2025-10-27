@@ -40,8 +40,10 @@ import {
   getSupabaseProjectName,
 } from "../../supabase_admin/supabase_management_client";
 import { createLoggedHandler } from "./safe_handle";
+import { isExpoProject } from "./expo_handlers";
 import { getLanguageModelProviders } from "../shared/language_model_helpers";
 import { startProxy } from "../utils/start_proxy_server";
+import { simpleSpawn } from "../utils/simpleSpawn";
 import { Worker } from "worker_threads";
 import { createFromTemplate } from "./createFromTemplate";
 import { gitCommit } from "../utils/git_utils";
@@ -54,6 +56,8 @@ import { AppSearchResult } from "@/lib/schemas";
 
 const DEFAULT_COMMAND =
   "(pnpm install && pnpm run dev --port 32100) || (npm install --legacy-peer-deps && npm run dev -- --port 32100)";
+const DEFAULT_EXPO_COMMAND =
+  "(pnpm install && BROWSER=none EXPO_NO_INTERACTIVE=1 pnpm exec expo start --web --port 32100) || (npm install --legacy-peer-deps && BROWSER=none EXPO_NO_INTERACTIVE=1 npx expo start --web --port 32100)";
 async function copyDir(
   source: string,
   destination: string,
@@ -140,12 +144,96 @@ async function executeAppLocalNode({
   installCommand?: string | null;
   startCommand?: string | null;
 }): Promise<void> {
-  const command = getCommand({ installCommand, startCommand });
+  const command = getCommand({ installCommand, startCommand, appPath });
+  let restartReason: "missing-babel-plugin-module-resolver" | null = null;
+  let missingBabelPluginHandled = false;
   const spawnedProcess = spawn(command, [], {
     cwd: appPath,
     shell: true,
     stdio: "pipe", // Ensure stdio is piped so we can capture output/errors and detect close
     detached: false, // Ensure child process is attached to the main process lifecycle unless explicitly backgrounded
+  });
+
+  const handleKnownStderr = (data: Buffer) => {
+    if (restartReason) {
+      return;
+    }
+
+    const message = util.stripVTControlCharacters(data.toString());
+    if (
+      !missingBabelPluginHandled &&
+      message.includes("babel-plugin-module-resolver")
+    ) {
+      missingBabelPluginHandled = true;
+      restartReason = "missing-babel-plugin-module-resolver";
+      logger.info(
+        `App ${appId} detected missing babel-plugin-module-resolver. Attempting auto-install.`,
+      );
+      safeSend(event.sender, "app:output", {
+        type: "stderr",
+        message:
+          "Detected missing babel-plugin-module-resolver. Installing dependency automatically and restarting…",
+        appId,
+      });
+      try {
+        spawnedProcess.kill();
+      } catch (error) {
+        logger.warn(
+          `Failed to terminate process ${spawnedProcess.pid} after missing Babel plugin detection:`,
+          error,
+        );
+      }
+    }
+  };
+
+  spawnedProcess.stderr?.on("data", handleKnownStderr);
+
+  spawnedProcess.once("close", () => {
+    spawnedProcess.stderr?.off("data", handleKnownStderr);
+    const reason = restartReason;
+    restartReason = null;
+
+    if (reason === "missing-babel-plugin-module-resolver") {
+      void (async () => {
+        try {
+          await simpleSpawn({
+            command:
+              "pnpm add -D babel-plugin-module-resolver || npm install -D babel-plugin-module-resolver --legacy-peer-deps",
+            cwd: appPath,
+            successMessage: "Installed babel-plugin-module-resolver",
+            errorPrefix: "Failed to install babel-plugin-module-resolver",
+            env: { ...process.env, LANG: "en_US.UTF-8" } as Record<
+              string,
+              string
+            >,
+          });
+          safeSend(event.sender, "app:output", {
+            type: "stdout",
+            message:
+              "✅ Finished installing babel-plugin-module-resolver. Restarting preview…",
+            appId,
+          });
+          await executeApp({
+            appPath,
+            appId,
+            event,
+            isNeon,
+            installCommand,
+            startCommand,
+          });
+        } catch (error) {
+          logger.error(
+            `Failed to auto-install babel-plugin-module-resolver for app ${appId}:`,
+            error,
+          );
+          safeSend(event.sender, "app:output", {
+            type: "stderr",
+            message: `Failed to install babel-plugin-module-resolver automatically. Please install it manually.\n${error instanceof Error ? error.message : String(error)}`,
+            appId,
+          });
+        }
+      })();
+    }
   });
 
   // Check if process spawned correctly
@@ -428,7 +516,7 @@ RUN npm install -g pnpm
       `dyad-app-${appId}`,
       "sh",
       "-c",
-      getCommand({ installCommand, startCommand }),
+      getCommand({ installCommand, startCommand, appPath }),
     ],
     {
       stdio: "pipe",
@@ -724,9 +812,7 @@ export function registerAppHandlers() {
     let supabaseProjectName: string | null = null;
     const settings = readSettings();
     if (app.supabaseProjectId && settings.supabase?.accessToken?.value) {
-      supabaseProjectName = await getSupabaseProjectName(
-        app.supabaseParentProjectId || app.supabaseProjectId,
-      );
+      supabaseProjectName = await getSupabaseProjectName(app.supabaseProjectId);
     }
 
     let vercelTeamSlug: string | null = null;
@@ -1538,14 +1624,25 @@ export function registerAppHandlers() {
 function getCommand({
   installCommand,
   startCommand,
+  appPath,
 }: {
   installCommand?: string | null;
   startCommand?: string | null;
+  appPath: string;
 }) {
   const hasCustomCommands = !!installCommand?.trim() && !!startCommand?.trim();
-  return hasCustomCommands
-    ? `${installCommand!.trim()} && ${startCommand!.trim()}`
-    : DEFAULT_COMMAND;
+  if (hasCustomCommands) {
+    return `${installCommand!.trim()} && ${startCommand!.trim()}`;
+  }
+
+  if (isExpoProject(appPath)) {
+    logger.info(
+      `Detected Expo project at ${appPath}, using Expo web start command`,
+    );
+    return DEFAULT_EXPO_COMMAND;
+  }
+
+  return DEFAULT_COMMAND;
 }
 
 async function cleanUpPort(port: number) {

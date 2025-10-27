@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useAtom, useAtomValue } from "jotai";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
@@ -12,7 +12,6 @@ import {
 } from "lucide-react";
 import { Problem, ProblemReport } from "@/ipc/ipc_types";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { useCheckProblems } from "@/hooks/useCheckProblems";
@@ -21,26 +20,11 @@ import { showError } from "@/lib/toast";
 
 interface ProblemItemProps {
   problem: Problem;
-  checked: boolean;
-  onToggle: () => void;
 }
 
-const ProblemItem = ({ problem, checked, onToggle }: ProblemItemProps) => {
+const ProblemItem = ({ problem }: ProblemItemProps) => {
   return (
-    <div
-      role="checkbox"
-      aria-checked={checked}
-      onClick={onToggle}
-      className="cursor-pointer flex items-start gap-3 p-3 border-b border-border hover:bg-[var(--background-darker)] dark:hover:bg-[var(--background-lightest)] transition-colors"
-      data-testid="problem-row"
-    >
-      <Checkbox
-        checked={checked}
-        onCheckedChange={onToggle}
-        onClick={(e) => e.stopPropagation()}
-        className="mt-0.5"
-        aria-label="Select problem"
-      />
+    <div className="flex items-start gap-3 p-3 border-b border-border hover:bg-[var(--background-darkest)] transition-colors">
       <div className="flex-shrink-0 mt-0.5">
         <XCircle size={16} className="text-red-500" />
       </div>
@@ -72,7 +56,6 @@ interface RecheckButtonProps {
     | "ghost"
     | "link";
   className?: string;
-  onBeforeRecheck?: () => void;
 }
 
 const RecheckButton = ({
@@ -80,15 +63,11 @@ const RecheckButton = ({
   size = "sm",
   variant = "outline",
   className = "h-7 px-3 text-xs",
-  onBeforeRecheck,
 }: RecheckButtonProps) => {
   const { checkProblems, isChecking } = useCheckProblems(appId);
   const [showingFeedback, setShowingFeedback] = useState(false);
 
   const handleRecheck = async () => {
-    if (onBeforeRecheck) {
-      onBeforeRecheck();
-    }
     setShowingFeedback(true);
 
     const res = await checkProblems();
@@ -123,24 +102,23 @@ const RecheckButton = ({
 interface ProblemsSummaryProps {
   problemReport: ProblemReport;
   appId: number;
-  selectedCount: number;
-  onClearAll: () => void;
-  onFixSelected: () => void;
-  onSelectAll: () => void;
 }
 
-const ProblemsSummary = ({
-  problemReport,
-  appId,
-  selectedCount,
-  onClearAll,
-  onFixSelected,
-  onSelectAll,
-}: ProblemsSummaryProps) => {
+const ProblemsSummary = ({ problemReport, appId }: ProblemsSummaryProps) => {
+  const { streamMessage } = useStreamChat();
   const { problems } = problemReport;
   const totalErrors = problems.length;
+  const [selectedChatId] = useAtom(selectedChatIdAtom);
 
-  // Keep stream hook mounted; actual fix action is provided via onFixSelected
+  const handleFixAll = () => {
+    if (!selectedChatId) {
+      return;
+    }
+    streamMessage({
+      prompt: createProblemFixPrompt(problemReport),
+      chatId: selectedChatId,
+    });
+  };
 
   if (problems.length === 0) {
     return (
@@ -170,36 +148,16 @@ const ProblemsSummary = ({
         )}
       </div>
       <div className="flex items-center gap-2">
-        <RecheckButton appId={appId} onBeforeRecheck={onClearAll} />
-        {selectedCount === 0 ? (
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={onSelectAll}
-            className="h-7 px-3 text-xs"
-          >
-            Select all
-          </Button>
-        ) : (
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={onClearAll}
-            className="h-7 px-3 text-xs"
-          >
-            Clear all
-          </Button>
-        )}
+        <RecheckButton appId={appId} />
         <Button
           size="sm"
           variant="default"
-          onClick={onFixSelected}
+          onClick={handleFixAll}
           className="h-7 px-3 text-xs"
           data-testid="fix-all-button"
-          disabled={selectedCount === 0}
         >
           <Wrench size={14} className="mr-1" />
-          {`Fix ${selectedCount} ${selectedCount === 1 ? "problem" : "problems"}`}
+          Fix All
         </Button>
       </div>
     </div>
@@ -217,20 +175,6 @@ export function Problems() {
 export function _Problems() {
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const { problemReport } = useCheckProblems(selectedAppId);
-  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
-  const problemKey = (p: Problem) =>
-    `${p.file}:${p.line}:${p.column}:${p.code}`;
-  const { streamMessage } = useStreamChat();
-  const [selectedChatId] = useAtom(selectedChatIdAtom);
-
-  // Whenever the problems pane is shown or the report updates, select all problems
-  useEffect(() => {
-    if (problemReport?.problems?.length) {
-      setSelectedKeys(new Set(problemReport.problems.map(problemKey)));
-    } else {
-      setSelectedKeys(new Set());
-    }
-  }, [problemReport]);
 
   if (!selectedAppId) {
     return (
@@ -256,65 +200,21 @@ export function _Problems() {
         <p className="text-sm text-muted-foreground max-w-md mb-4">
           Run checks to scan your app for TypeScript errors and other problems.
         </p>
-        <RecheckButton
-          appId={selectedAppId}
-          onBeforeRecheck={() => setSelectedKeys(new Set())}
-        />
+        <RecheckButton appId={selectedAppId} />
       </div>
     );
   }
 
   return (
     <div className="flex flex-col h-full">
-      <ProblemsSummary
-        problemReport={problemReport}
-        appId={selectedAppId}
-        selectedCount={
-          [...selectedKeys].filter((key) =>
-            problemReport.problems.some((p) => problemKey(p) === key),
-          ).length
-        }
-        onClearAll={() => setSelectedKeys(new Set())}
-        onSelectAll={() =>
-          setSelectedKeys(
-            new Set(problemReport.problems.map((p) => problemKey(p))),
-          )
-        }
-        onFixSelected={() => {
-          if (!selectedChatId) return;
-          const selectedProblems = problemReport.problems.filter((p) =>
-            selectedKeys.has(problemKey(p)),
-          );
-          const subsetReport: ProblemReport = { problems: selectedProblems };
-          streamMessage({
-            prompt: createProblemFixPrompt(subsetReport),
-            chatId: selectedChatId,
-          });
-        }}
-      />
+      <ProblemsSummary problemReport={problemReport} appId={selectedAppId} />
       <div className="flex-1 overflow-y-auto">
-        {problemReport.problems.map((problem) => {
-          const selKey = problemKey(problem);
-          const checked = selectedKeys.has(selKey);
-          return (
-            <ProblemItem
-              key={selKey}
-              problem={problem}
-              checked={checked}
-              onToggle={() => {
-                setSelectedKeys((prev) => {
-                  const next = new Set(prev);
-                  if (next.has(selKey)) {
-                    next.delete(selKey);
-                  } else {
-                    next.add(selKey);
-                  }
-                  return next;
-                });
-              }}
-            />
-          );
-        })}
+        {problemReport.problems.map((problem, index) => (
+          <ProblemItem
+            key={`${problem.file}-${problem.line}-${problem.column}-${index}`}
+            problem={problem}
+          />
+        ))}
       </div>
     </div>
   );

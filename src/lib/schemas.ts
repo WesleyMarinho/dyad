@@ -111,6 +111,30 @@ export const VertexProviderSettingSchema = z.object({
   serviceAccountKey: SecretSchema.optional(),
 });
 
+export const GoogleProviderSettingSchema = RegularProviderSettingSchema.extend({
+  connectionMode: z.enum(["api", "cli", "auto"]).default("api"),
+  cliPath: z.string().optional(),
+  cliAutoDetect: z.boolean().default(true),
+  cliFallbackToApi: z.boolean().default(true),
+  cliPreferredModels: z.array(z.string()).default([
+    "gemini-2.5-pro",
+    "gemini-2.5-flash",
+  ]),
+  cliTimeoutMs: z.number().int().positive().max(120000).default(60000),
+});
+
+export const OpenAIProviderSettingSchema = RegularProviderSettingSchema.extend({
+  connectionMode: z.enum(["api", "cli", "auto"]).default("api"),
+  cliPath: z.string().optional(),
+  cliAutoDetect: z.boolean().default(true),
+  cliFallbackToApi: z.boolean().default(true),
+  cliPreferredModels: z.array(z.string()).default([
+    "o4-mini",
+    "gpt-4.1-mini",
+  ]),
+  cliTimeoutMs: z.number().int().positive().max(120000).default(60000),
+});
+
 export const ProviderSettingSchema = z.union([
   // Must use more specific type first!
   // Zod uses the first type that matches.
@@ -123,6 +147,8 @@ export const ProviderSettingSchema = z.union([
   // so doing passthrough keeps these extra fields.
   AzureProviderSettingSchema.passthrough(),
   VertexProviderSettingSchema.passthrough(),
+  GoogleProviderSettingSchema.passthrough(),
+  OpenAIProviderSettingSchema.passthrough(),
   RegularProviderSettingSchema.passthrough(),
 ]);
 
@@ -135,6 +161,8 @@ export type RegularProviderSetting = z.infer<
 >;
 export type AzureProviderSetting = z.infer<typeof AzureProviderSettingSchema>;
 export type VertexProviderSetting = z.infer<typeof VertexProviderSettingSchema>;
+export type GoogleProviderSetting = z.infer<typeof GoogleProviderSettingSchema>;
+export type OpenAIProviderSetting = z.infer<typeof OpenAIProviderSettingSchema>;
 
 export const RuntimeModeSchema = z.enum(["web-sandbox", "local-node", "unset"]);
 export type RuntimeMode = z.infer<typeof RuntimeModeSchema>;
@@ -234,6 +262,7 @@ export const UserSettingsSchema = z.object({
   enableProLazyEditsMode: z.boolean().optional(),
   enableProSmartFilesContextMode: z.boolean().optional(),
   enableProWebSearch: z.boolean().optional(),
+  enableAutoSummaries: z.boolean().optional(),
   proSmartContextOption: z.enum(["balanced", "conservative"]).optional(),
   selectedTemplateId: z.string(),
   enableSupabaseWriteSqlMigration: z.boolean().optional(),
@@ -245,7 +274,6 @@ export const UserSettingsSchema = z.object({
   enableAutoUpdate: z.boolean(),
   releaseChannel: ReleaseChannelSchema,
   runtimeMode2: RuntimeMode2Schema.optional(),
-  customNodePath: z.string().optional().nullable(),
 
   ////////////////////////////////
   // E2E TESTING ONLY.
@@ -270,7 +298,8 @@ export function isDyadProEnabled(settings: UserSettings): boolean {
 }
 
 export function hasDyadProKey(settings: UserSettings): boolean {
-  return !!settings.providerSettings?.auto?.apiKey?.value;
+  const autoSetting = settings.providerSettings?.auto as any;
+  return !!autoSetting?.apiKey?.value;
 }
 
 // Define interfaces for the props

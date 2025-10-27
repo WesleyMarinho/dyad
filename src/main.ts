@@ -18,10 +18,6 @@ import { BackupManager } from "./backup_manager";
 import { getDatabasePath, initializeDatabase } from "./db";
 import { UserSettings } from "./lib/schemas";
 import { handleNeonOAuthReturn } from "./neon_admin/neon_return_handler";
-import {
-  AddMcpServerConfigSchema,
-  AddMcpServerPayload,
-} from "./ipc/deep_link_data";
 
 log.errorHandler.startCatching();
 log.eventLogger.startLogging();
@@ -164,8 +160,15 @@ const createWindow = () => {
     );
   }
   if (process.env.NODE_ENV === "development") {
-    // Open the DevTools.
-    mainWindow.webContents.openDevTools();
+    const openDevToolsEnv = process.env.DYAD_OPEN_DEVTOOLS;
+    const shouldOpenDevTools =
+      openDevToolsEnv?.toLowerCase() === "true" ||
+      openDevToolsEnv === "1";
+    if (shouldOpenDevTools) {
+      mainWindow.webContents.openDevTools({
+        mode: "right",
+      });
+    }
   }
 
   // Enable native context menu on right-click
@@ -325,36 +328,6 @@ function handleDeepLinkReturn(url: string) {
     mainWindow?.webContents.send("deep-link-received", {
       type: parsed.hostname,
     });
-    return;
-  }
-  // dyad://add-mcp-server?name=Chrome%20DevTools&config=eyJjb21tYW5kIjpudWxsLCJ0eXBlIjoic3RkaW8ifQ%3D%3D
-  if (parsed.hostname === "add-mcp-server") {
-    const name = parsed.searchParams.get("name");
-    const config = parsed.searchParams.get("config");
-    if (!name || !config) {
-      dialog.showErrorBox("Invalid URL", "Expected name and config");
-      return;
-    }
-
-    try {
-      const decodedConfigJson = atob(config);
-      const decodedConfig = JSON.parse(decodedConfigJson);
-      const parsedConfig = AddMcpServerConfigSchema.parse(decodedConfig);
-
-      mainWindow?.webContents.send("deep-link-received", {
-        type: parsed.hostname,
-        payload: {
-          name,
-          config: parsedConfig,
-        } as AddMcpServerPayload,
-      });
-    } catch (error) {
-      logger.error("Failed to parse add-mcp-server deep link:", error);
-      dialog.showErrorBox(
-        "Invalid MCP Server Configuration",
-        "The deep link contains malformed configuration data. Please check the URL and try again.",
-      );
-    }
     return;
   }
   dialog.showErrorBox("Invalid deep link URL", url);

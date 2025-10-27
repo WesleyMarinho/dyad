@@ -1,236 +1,207 @@
-import { useState, useEffect } from "react";
-import { useRouter } from "@tanstack/react-router";
-import { ArrowLeft, AlertTriangle } from "lucide-react";
-import { useSettings } from "@/hooks/useSettings";
+import { useMemo } from "react";
 import { useLanguageModelProviders } from "@/hooks/useLanguageModelProviders";
-
+import { useSettings } from "@/hooks/useSettings";
+import { useRouter } from "@tanstack/react-router";
+import {
+  AlertTriangle,
+  ArrowLeft,
+  ExternalLink,
+  Info,
+  Sparkles,
+} from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
-import {} from "@/components/ui/accordion";
-
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { showError } from "@/lib/toast";
-import {
-  UserSettings,
-  AzureProviderSetting,
-  VertexProviderSetting,
-} from "@/lib/schemas";
-
-import { ProviderSettingsHeader } from "./ProviderSettingsHeader";
-import { ApiKeyConfiguration } from "./ApiKeyConfiguration";
+import { Badge } from "@/components/ui/badge";
 import { ModelsSection } from "./ModelsSection";
+import { ApiKeyConfiguration } from "./ApiKeyConfiguration";
+import { GoogleConfiguration } from "./GoogleConfiguration";
+import { OpenAIConfiguration } from "./OpenAIConfiguration";
+import { AzureConfiguration } from "./AzureConfiguration";
+import { VertexConfiguration } from "./VertexConfiguration";
+import { showError } from "@/lib/toast";
+import { IpcClient } from "@/ipc/ipc_client";
+import type { UserSettings } from "@/lib/schemas";
 
 interface ProviderSettingsPageProps {
   provider: string;
 }
 
 export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
+  const router = useRouter();
   const {
     settings,
     envVars,
     loading: settingsLoading,
-    error: settingsError,
     updateSettings,
   } = useSettings();
 
-  // Fetch all providers
   const {
-    data: allProviders,
+    data: providers,
     isLoading: providersLoading,
     error: providersError,
   } = useLanguageModelProviders();
 
-  // Find the specific provider data from the fetched list
-  const providerData = allProviders?.find((p) => p.id === provider);
-  useEffect(() => {
-    const layoutMainContentContainer = document.getElementById(
-      "layout-main-content-container",
-    );
-    if (layoutMainContentContainer) {
-      layoutMainContentContainer.scrollTo(0, 0);
-    }
-  }, [providerData?.id]);
-
-  const supportsCustomModels =
-    providerData?.type === "custom" || providerData?.type === "cloud";
-
   const isDyad = provider === "auto";
+  const providerData = providers?.find((p) => p.id === provider);
 
-  const [apiKeyInput, setApiKeyInput] = useState("");
-  const [isSaving, setIsSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const router = useRouter();
-
-  // Use fetched data (or defaults for Dyad)
   const providerDisplayName = isDyad
     ? "Dyad"
-    : (providerData?.name ?? "Unknown Provider");
+    : providerData?.name ?? provider.toUpperCase();
+
   const providerWebsiteUrl = isDyad
     ? "https://academy.dyad.sh/settings"
     : providerData?.websiteUrl;
-  const hasFreeTier = isDyad ? false : providerData?.hasFreeTier;
-  const envVarName = isDyad ? undefined : providerData?.envVarName;
 
-  // Use provider ID (which is the 'provider' prop)
-  const userApiKey = settings?.providerSettings?.[provider]?.apiKey?.value;
+  const showModelsSection =
+    providerData?.type === "cloud" ||
+    providerData?.type === "custom" ||
+    provider === "auto";
 
-  // --- Configuration Logic --- Updated Priority ---
-  const isValidUserKey =
-    !!userApiKey &&
-    !userApiKey.startsWith("Invalid Key") &&
-    userApiKey !== "Not Set";
-  const hasEnvKey = !!(envVarName && envVars[envVarName]);
-
-  const azureSettings = settings?.providerSettings?.azure as
-    | AzureProviderSetting
-    | undefined;
-  const azureApiKeyFromSettings = (azureSettings?.apiKey?.value ?? "").trim();
-  const azureResourceNameFromSettings = (
-    azureSettings?.resourceName ?? ""
-  ).trim();
-  const azureHasSavedSettings = Boolean(
-    azureApiKeyFromSettings && azureResourceNameFromSettings,
-  );
-  const azureHasEnvConfiguration = Boolean(
-    envVars["AZURE_API_KEY"] && envVars["AZURE_RESOURCE_NAME"],
-  );
-
-  const vertexSettings = settings?.providerSettings?.vertex as
-    | VertexProviderSetting
-    | undefined;
-  const isVertexConfigured = Boolean(
-    vertexSettings?.projectId &&
-      vertexSettings?.location &&
-      vertexSettings?.serviceAccountKey?.value,
-  );
-
-  const isAzureConfigured =
-    provider === "azure"
-      ? azureHasSavedSettings || azureHasEnvConfiguration
-      : false;
-
-  const isConfigured =
-    provider === "azure"
-      ? isAzureConfigured
-      : provider === "vertex"
-        ? isVertexConfigured
-        : isValidUserKey || hasEnvKey; // Configured if either is set
-
-  // --- Save Handler ---
-  const handleSaveKey = async (value: string) => {
-    if (!value.trim()) {
-      setSaveError("API Key cannot be empty.");
-      return;
-    }
-    setIsSaving(true);
-    setSaveError(null);
-    try {
-      const settingsUpdate: Partial<UserSettings> = {
-        providerSettings: {
-          ...settings?.providerSettings,
-          [provider]: {
-            ...settings?.providerSettings?.[provider],
-            apiKey: {
-              value,
-            },
-          },
-        },
-      };
-      if (isDyad) {
-        settingsUpdate.enableDyadPro = true;
-      }
-      await updateSettings(settingsUpdate);
-      setApiKeyInput(""); // Clear input on success
-      // Optionally show a success message
-    } catch (error: any) {
-      console.error("Error saving API key:", error);
-      setSaveError(error.message || "Failed to save API key.");
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  // --- Delete Handler ---
-  const handleDeleteKey = async () => {
-    setIsSaving(true);
-    setSaveError(null);
-    try {
-      await updateSettings({
-        providerSettings: {
-          ...settings?.providerSettings,
-          [provider]: {
-            ...settings?.providerSettings?.[provider],
-            apiKey: undefined,
-          },
-        },
-      });
-      // Optionally show a success message
-    } catch (error: any) {
-      console.error("Error deleting API key:", error);
-      setSaveError(error.message || "Failed to delete API key.");
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  // --- Toggle Dyad Pro Handler ---
   const handleToggleDyadPro = async (enabled: boolean) => {
-    setIsSaving(true);
     try {
-      await updateSettings({
-        enableDyadPro: enabled,
-      });
+      const updates: Partial<UserSettings> = { enableDyadPro: enabled };
+      if (enabled) {
+        updates.enableProSmartFilesContextMode = true;
+        updates.enableProLazyEditsMode = true;
+        if (!settings?.proSmartContextOption) {
+          updates.proSmartContextOption = "balanced";
+        }
+      }
+      await updateSettings(updates);
     } catch (error: any) {
       showError(`Error toggling Dyad Pro: ${error}`);
-    } finally {
-      setIsSaving(false);
     }
   };
 
-  // Effect to clear input error when input changes
-  useEffect(() => {
-    if (saveError) {
-      setSaveError(null);
+  const configuration = useMemo(() => {
+    if (isDyad) {
+      return (
+        <div className="mt-6 flex items-center justify-between p-4 border rounded-lg bg-(--background-lightest)">
+          <div>
+            <h3 className="font-medium flex items-center gap-2">
+              Enable Dyad Pro
+              <Badge variant="outline" className="uppercase tracking-wide">
+                <Sparkles className="h-3 w-3 mr-1" />
+                Pro
+              </Badge>
+            </h3>
+            <p className="text-sm text-muted-foreground">
+              Unlock Dyad Pro features such as smart context, lazy edits, and
+              web search.
+            </p>
+          </div>
+          <Switch
+            checked={settings?.enableDyadPro}
+            onCheckedChange={handleToggleDyadPro}
+          />
+        </div>
+      );
     }
-  }, [apiKeyInput]);
 
-  // --- Loading State for Providers ---
+    if (!providerData) {
+      return (
+        <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle>Provider not found</AlertTitle>
+          <AlertDescription>
+            The provider with ID "{provider}" could not be found.
+          </AlertDescription>
+        </Alert>
+      );
+    }
+
+    switch (provider) {
+      case "openai":
+        return (
+          <OpenAIConfiguration
+            settings={settings}
+            envVars={envVars}
+            updateSettings={updateSettings}
+          />
+        );
+      case "google":
+        return (
+          <GoogleConfiguration
+            settings={settings}
+            envVars={envVars}
+            updateSettings={updateSettings}
+          />
+        );
+      case "azure":
+        return (
+          <AzureConfiguration
+            settings={settings}
+            envVars={envVars}
+            updateSettings={updateSettings}
+          />
+        );
+      case "vertex":
+        return <VertexConfiguration />;
+      default:
+        if (providerData.type === "custom") {
+          return (
+            <Alert variant="default">
+              <Info className="h-4 w-4" />
+              <AlertTitle>Custom provider configuration</AlertTitle>
+              <AlertDescription>
+                Manage credentials for this provider via the edit dialog in the
+                provider list.
+              </AlertDescription>
+            </Alert>
+          );
+        }
+
+        return (
+          <ApiKeyConfiguration
+            providerId={provider}
+            providerName={providerDisplayName}
+            settings={settings}
+            envVars={envVars}
+            envVarName={providerData.envVarName}
+            updateSettings={updateSettings}
+          />
+        );
+    }
+  }, [
+    envVars,
+    isDyad,
+    provider,
+    providerData,
+    providerDisplayName,
+    settings,
+    updateSettings,
+  ]);
+
   if (providersLoading) {
     return (
       <div className="min-h-screen px-8 py-4">
-        <div className="max-w-4xl mx-auto">
-          <Skeleton className="h-8 w-24 mb-4" />
-          <Skeleton className="h-10 w-1/2 mb-6" />
-          <Skeleton className="h-10 w-48 mb-4" />
-          <div className="space-y-4 mt-6">
-            <Skeleton className="h-40 w-full" />
-          </div>
+        <div className="max-w-4xl mx-auto space-y-6">
+          <Skeleton className="h-8 w-32" />
+          <Skeleton className="h-12 w-full" />
+          <Skeleton className="h-24 w-full" />
         </div>
       </div>
     );
   }
 
-  // --- Error State for Providers ---
   if (providersError) {
     return (
       <div className="min-h-screen px-8 py-4">
-        <div className="max-w-4xl mx-auto">
+        <div className="max-w-4xl mx-auto space-y-4">
           <Button
             onClick={() => router.history.back()}
             variant="outline"
             size="sm"
-            className="flex items-center gap-2 mb-4 bg-(--background-lightest) py-5"
+            className="flex items-center gap-2"
           >
             <ArrowLeft className="h-4 w-4" />
             Go Back
           </Button>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mr-3 mb-6">
-            Configure Provider
-          </h1>
           <Alert variant="destructive">
             <AlertTriangle className="h-4 w-4" />
-            <AlertTitle>Error Loading Provider Details</AlertTitle>
+            <AlertTitle>Error loading provider details</AlertTitle>
             <AlertDescription>
               Could not load provider data: {providersError.message}
             </AlertDescription>
@@ -240,98 +211,52 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
     );
   }
 
-  // Handle case where provider is not found (e.g., invalid ID in URL)
-  if (!providerData && !isDyad) {
-    return (
-      <div className="min-h-screen px-8 py-4">
-        <div className="max-w-4xl mx-auto">
-          <Button
-            onClick={() => router.history.back()}
-            variant="outline"
-            size="sm"
-            className="flex items-center gap-2 mb-4 bg-(--background-lightest) py-5"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Go Back
-          </Button>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mr-3 mb-6">
-            Provider Not Found
-          </h1>
-          <Alert variant="destructive">
-            <AlertTriangle className="h-4 w-4" />
-            <AlertTitle>Error</AlertTitle>
-            <AlertDescription>
-              The provider with ID "{provider}" could not be found.
-            </AlertDescription>
-          </Alert>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen px-8 py-4">
-      <div className="max-w-4xl mx-auto">
-        <ProviderSettingsHeader
-          providerDisplayName={providerDisplayName}
-          isConfigured={isConfigured}
-          isLoading={settingsLoading}
-          hasFreeTier={hasFreeTier}
-          providerWebsiteUrl={providerWebsiteUrl}
-          isDyad={isDyad}
-          onBackClick={() => router.history.back()}
-        />
+      <div className="max-w-4xl mx-auto space-y-6">
+        <div className="flex items-center justify-between">
+          <Button
+            onClick={() => router.history.back()}
+            variant="ghost"
+            size="sm"
+            className="flex items-center gap-2"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Providers
+          </Button>
+          {providerWebsiteUrl && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                IpcClient.getInstance().openExternalUrl(providerWebsiteUrl)
+              }
+              className="flex items-center gap-2"
+            >
+              Docs
+              <ExternalLink className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
+
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">
+            {providerDisplayName}
+          </h1>
+          {providerData?.hasFreeTier && (
+            <Badge variant="secondary" className="mt-2">
+              Free tier available
+            </Badge>
+          )}
+        </div>
 
         {settingsLoading ? (
-          <div className="space-y-4">
-            <Skeleton className="h-40 w-full" />
-          </div>
-        ) : settingsError ? (
-          <Alert variant="destructive">
-            <AlertTitle>Error Loading Settings</AlertTitle>
-            <AlertDescription>
-              Could not load configuration data: {settingsError.message}
-            </AlertDescription>
-          </Alert>
+          <Skeleton className="h-32 w-full" />
         ) : (
-          <ApiKeyConfiguration
-            provider={provider}
-            providerDisplayName={providerDisplayName}
-            settings={settings}
-            envVars={envVars}
-            envVarName={envVarName}
-            isSaving={isSaving}
-            saveError={saveError}
-            apiKeyInput={apiKeyInput}
-            onApiKeyInputChange={setApiKeyInput}
-            onSaveKey={handleSaveKey}
-            onDeleteKey={handleDeleteKey}
-            isDyad={isDyad}
-            updateSettings={updateSettings}
-          />
+          configuration
         )}
 
-        {isDyad && !settingsLoading && (
-          <div className="mt-6 flex items-center justify-between p-4 bg-(--background-lightest) rounded-lg border">
-            <div>
-              <h3 className="font-medium">Enable Dyad Pro</h3>
-              <p className="text-sm text-gray-600 dark:text-gray-400">
-                Toggle to enable Dyad Pro
-              </p>
-            </div>
-            <Switch
-              checked={settings?.enableDyadPro}
-              onCheckedChange={handleToggleDyadPro}
-              disabled={isSaving}
-            />
-          </div>
-        )}
-
-        {/* Conditionally render CustomModelsSection */}
-        {supportsCustomModels && providerData && (
-          <ModelsSection providerId={providerData.id} />
-        )}
-        <div className="h-24"></div>
+        {showModelsSection && <ModelsSection providerId={provider} />}
       </div>
     </div>
   );

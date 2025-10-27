@@ -1,4 +1,4 @@
-import { test, testSkipIfWindows, Timeout } from "./helpers/test_helper";
+import { test, testSkipIfWindows } from "./helpers/test_helper";
 import { expect } from "@playwright/test";
 import fs from "fs";
 import path from "path";
@@ -83,72 +83,6 @@ export default App;
   await po.snapshotMessages({ replaceDumpPath: true });
 });
 
-testSkipIfWindows(
-  "problems - select specific problems and fix",
-  async ({ po }) => {
-    await po.setUp();
-    await po.importApp(MINIMAL_APP);
-
-    // Create multiple TS errors in one file
-    const appPath = await po.getCurrentAppPath();
-    const badFilePath = path.join(appPath, "src", "bad-file.tsx");
-    fs.writeFileSync(
-      badFilePath,
-      `const App = () => <div>Minimal imported app</div>;
-nonExistentFunction1();
-nonExistentFunction2();
-nonExistentFunction3();
-
-export default App;
-`,
-    );
-
-    await po.ensurePnpmInstall();
-
-    // Trigger creation of problems and open problems panel
-    // await po.sendPrompt("tc=create-ts-errors");
-    await po.selectPreviewMode("problems");
-    await po.clickRecheckProblems();
-
-    // Initially, all selected: button shows Fix X problems and Clear all is visible
-    const fixButton = po.page.getByTestId("fix-all-button");
-    await expect(fixButton).toBeVisible();
-    await expect(fixButton).toContainText(/Fix \d+ problems/);
-
-    // Click first two rows to toggle off (deselect)
-    const rows = po.page.getByTestId("problem-row");
-    const rowCount = await rows.count();
-    expect(rowCount).toBeGreaterThan(2);
-    await rows.nth(0).click();
-    await rows.nth(1).click();
-
-    // Button should update to reflect remaining selected
-    await expect(fixButton).toContainText(/Fix 1 problem/);
-
-    // Clear all should switch to Select all when none selected
-    // Deselect remaining rows
-    for (let i = 2; i < rowCount; i++) {
-      await rows.nth(i).click();
-    }
-
-    const selectButton = po.page.getByRole("button", {
-      name: /Select all/,
-    });
-    await expect(selectButton).toHaveText("Select all");
-
-    // Select all, then fix selected
-    await selectButton.click();
-    // Unselect the second row
-    await rows.nth(1).click();
-    await expect(fixButton).toContainText(/Fix 2 problems/);
-
-    await fixButton.click();
-    await po.waitForChatCompletion();
-    await po.snapshotServerDump("last-message");
-    await po.snapshotMessages({ replaceDumpPath: true });
-  },
-);
-
 testSkipIfWindows("problems - manual edit (react/vite)", async ({ po }) => {
   await po.setUp({ enableAutoFixProblems: true });
   await po.sendPrompt("tc=1");
@@ -167,15 +101,13 @@ export default App;
   await po.clickTogglePreviewPanel();
 
   await po.selectPreviewMode("problems");
-  const fixButton = po.page.getByTestId("fix-all-button");
-  await expect(fixButton).toBeEnabled({ timeout: Timeout.LONG });
-  await expect(fixButton).toContainText(/Fix 1 problem/);
+  await po.clickRecheckProblems();
+  await po.snapshotProblemsPane();
 
   fs.unlinkSync(badFilePath);
 
   await po.clickRecheckProblems();
-  await expect(fixButton).toBeDisabled({ timeout: Timeout.LONG });
-  await expect(fixButton).toContainText(/Fix 0 problems/);
+  await po.snapshotProblemsPane();
 });
 
 testSkipIfWindows("problems - manual edit (next.js)", async ({ po }) => {
@@ -197,13 +129,11 @@ testSkipIfWindows("problems - manual edit (next.js)", async ({ po }) => {
   await po.clickTogglePreviewPanel();
 
   await po.selectPreviewMode("problems");
-  const fixButton = po.page.getByTestId("fix-all-button");
-  await expect(fixButton).toBeEnabled({ timeout: Timeout.LONG });
-  await expect(fixButton).toContainText(/Fix 1 problem/);
+  await po.clickRecheckProblems();
+  await po.snapshotProblemsPane();
 
   fs.unlinkSync(badFilePath);
 
   await po.clickRecheckProblems();
-  await expect(fixButton).toBeDisabled({ timeout: Timeout.LONG });
-  await expect(fixButton).toContainText(/Fix 0 problems/);
+  await po.snapshotProblemsPane();
 });

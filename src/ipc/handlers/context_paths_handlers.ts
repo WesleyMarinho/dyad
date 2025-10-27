@@ -13,6 +13,7 @@ import log from "electron-log";
 import { getDyadAppPath } from "@/paths/paths";
 import { extractCodebase } from "@/utils/codebase";
 import { validateChatContext } from "../utils/context_paths_utils";
+import { DEFAULT_EXCLUDE_GLOBS } from "@/shared/contextDefaults";
 
 const logger = log.scope("context_paths_handlers");
 const handle = createLoggedHandler(logger);
@@ -77,7 +78,17 @@ export function registerContextPathsHandlers() {
         });
       }
 
+      const defaultExcludeSet = new Set(DEFAULT_EXCLUDE_GLOBS);
       for (const excludePath of excludePaths || []) {
+        if (defaultExcludeSet.has(excludePath.globPath)) {
+          results.excludePaths.push({
+            ...excludePath,
+            files: 0,
+            tokens: 0,
+          });
+          continue;
+        }
+
         const { formattedOutput, files } = await extractCodebase({
           appPath,
           chatContext: {

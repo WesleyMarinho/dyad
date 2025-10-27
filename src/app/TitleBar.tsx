@@ -49,17 +49,16 @@ export const TitleBar = () => {
     setIsSuccessDialogOpen(true);
   };
 
-  const { lastDeepLink, clearLastDeepLink } = useDeepLink();
+  const { lastDeepLink } = useDeepLink();
   useEffect(() => {
     const handleDeepLink = async () => {
       if (lastDeepLink?.type === "dyad-pro-return") {
         await refreshSettings();
         showDyadProSuccessDialog();
-        clearLastDeepLink();
       }
     };
     handleDeepLink();
-  }, [lastDeepLink?.timestamp]);
+  }, [lastDeepLink]);
 
   // Get selected app name
   const selectedApp = apps.find((app) => app.id === selectedAppId);

@@ -198,8 +198,6 @@ export const GITHUB_TIP: MessageConfig = {
 };
 // Array of all available messages for rotation
 const ALL_MESSAGES = [
-  TURBO_EDITS_PROMO_MESSAGE,
-  SMART_CONTEXT_PROMO_MESSAGE,
   DIFFERENT_MODEL_TIP,
   REDDIT_TIP,
   REPORT_A_BUG_TIP,

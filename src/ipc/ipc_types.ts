@@ -90,7 +90,6 @@ export interface App {
   githubRepo: string | null;
   githubBranch: string | null;
   supabaseProjectId: string | null;
-  supabaseParentProjectId: string | null;
   supabaseProjectName: string | null;
   neonProjectId: string | null;
   neonDevelopmentBranchId: string | null;
@@ -509,26 +508,3 @@ export type CloneRepoReturnType =
   | {
       error: string;
     };
-
-export interface SupabaseBranch {
-  id: string;
-  name: string;
-  isDefault: boolean;
-  projectRef: string;
-  parentProjectRef: string;
-}
-
-export interface SetSupabaseAppProjectParams {
-  projectId: string;
-  parentProjectId?: string;
-  appId: number;
-}
-export interface SetNodePathParams {
-  nodePath: string;
-}
-
-export interface SelectNodeFolderResult {
-  path: string | null;
-  canceled?: boolean;
-  selectedPath: string | null;
-}

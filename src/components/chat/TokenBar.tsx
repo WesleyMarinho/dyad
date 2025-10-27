@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import { chatInputValueAtom } from "@/atoms/chatAtoms";
 import {
   Tooltip,
   TooltipContent,
@@ -6,17 +6,17 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useCountTokens } from "@/hooks/useCountTokens";
-import {
-  MessageSquare,
-  Code,
-  Bot,
-  AlignLeft,
-  ExternalLink,
-} from "lucide-react";
-import { chatInputValueAtom } from "@/atoms/chatAtoms";
-import { useAtom } from "jotai";
 import { useSettings } from "@/hooks/useSettings";
-import { IpcClient } from "@/ipc/ipc_client";
+import { useAtom } from "jotai";
+import {
+  AlignLeft,
+  Bot,
+  Code,
+  ExternalLink,
+  MessageSquare,
+  Sparkles,
+} from "lucide-react";
+import { useEffect, useState } from "react";
 
 interface TokenBarProps {
   chatId?: number;
@@ -65,9 +65,15 @@ export function TokenBar({ chatId }: TokenBarProps) {
   const mentionedAppsPercent = (mentionedAppsTokens / contextWindow) * 100;
   const systemPromptPercent = (systemPromptTokens / contextWindow) * 100;
   const inputPercent = (inputTokens / contextWindow) * 100;
+  const smartContextModeLabel = (() => {
+    const mode = settings?.proSmartContextOption ?? "balanced";
+    return mode.charAt(0).toUpperCase() + mode.slice(1);
+  })();
+  const isSmartContextEnabled =
+    settings?.enableDyadPro && settings?.enableProSmartFilesContextMode;
 
   return (
-    <div className="px-4 pb-2 text-xs" data-testid="token-bar">
+    <div className="px-4 pb-2 text-xs">
       <TooltipProvider>
         <Tooltip>
           <TooltipTrigger asChild>
@@ -143,24 +149,13 @@ export function TokenBar({ chatId }: TokenBarProps) {
         </Tooltip>
       </TooltipProvider>
       {error && <div className="text-red-500 text-xs mt-1">{error}</div>}
-      {(!settings?.enableProSmartFilesContextMode ||
-        !settings?.enableDyadPro) && (
-        <div className="text-xs text-center text-muted-foreground mt-2">
-          Optimize your tokens with{" "}
-          <a
-            onClick={() =>
-              settings?.enableDyadPro
-                ? IpcClient.getInstance().openExternalUrl(
-                    "https://www.dyad.sh/docs/guides/ai-models/pro-modes#smart-context",
-                  )
-                : IpcClient.getInstance().openExternalUrl(
-                    "https://dyad.sh/pro#ai",
-                  )
-            }
-            className="text-blue-500 dark:text-blue-400 cursor-pointer hover:underline"
-          >
-            Dyad Pro's Smart Context
-          </a>
+      {isSmartContextEnabled && (
+        <div className="flex items-center gap-1 text-[11px] text-muted-foreground mt-1">
+          <Sparkles className="h-3 w-3" />
+          <span>
+            Smart Context ({smartContextModeLabel}) is selecting relevant files
+            automatically.
+          </span>
         </div>
       )}
     </div>

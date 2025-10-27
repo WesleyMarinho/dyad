@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useTheme } from "../contexts/ThemeContext";
 import { ProviderSettingsGrid } from "@/components/ProviderSettings";
 import ConfirmationDialog from "@/components/ConfirmationDialog";
@@ -20,14 +20,12 @@ import { SupabaseIntegration } from "@/components/SupabaseIntegration";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { AutoFixProblemsSwitch } from "@/components/AutoFixProblemsSwitch";
+import { AutoSummariesSwitch } from "@/components/AutoSummariesSwitch";
 import { AutoUpdateSwitch } from "@/components/AutoUpdateSwitch";
 import { ReleaseChannelSelector } from "@/components/ReleaseChannelSelector";
 import { NeonIntegration } from "@/components/NeonIntegration";
 import { RuntimeModeSelector } from "@/components/RuntimeModeSelector";
-import { NodePathSelector } from "@/components/NodePathSelector";
 import { ToolsMcpSettings } from "@/components/settings/ToolsMcpSettings";
-import { useSetAtom } from "jotai";
-import { activeSettingsSectionAtom } from "@/atoms/viewAtoms";
 
 export default function SettingsPage() {
   const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
@@ -35,11 +33,6 @@ export default function SettingsPage() {
   const appVersion = useAppVersion();
   const { settings, updateSettings } = useSettings();
   const router = useRouter();
-  const setActiveSettingsSection = useSetAtom(activeSettingsSectionAtom);
-
-  useEffect(() => {
-    setActiveSettingsSection("general-settings");
-  }, [setActiveSettingsSection]);
 
   const handleResetEverything = async () => {
     setIsResetting(true);
@@ -280,9 +273,6 @@ export function GeneralSettings({ appVersion }: { appVersion: string | null }) {
       <div className="mt-4">
         <RuntimeModeSelector />
       </div>
-      <div className="mt-4">
-        <NodePathSelector />
-      </div>
 
       <div className="flex items-center text-sm text-gray-500 dark:text-gray-400 mt-4">
         <span className="mr-2 font-medium">App Version:</span>
@@ -315,6 +305,13 @@ export function WorkflowSettings() {
         <AutoFixProblemsSwitch />
         <div className="text-sm text-gray-500 dark:text-gray-400">
           This will automatically fix TypeScript errors.
+        </div>
+      </div>
+
+      <div className="space-y-1 mt-4">
+        <AutoSummariesSwitch />
+        <div className="text-sm text-gray-500 dark:text-gray-400">
+          Automatically summarize the chat when the context window gets large.
         </div>
       </div>
     </div>

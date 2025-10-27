@@ -1,32 +1,45 @@
-import { createOpenAI } from "@ai-sdk/openai";
-import { createGoogleGenerativeAI as createGoogle } from "@ai-sdk/google";
-import { createAnthropic } from "@ai-sdk/anthropic";
-import { createXai } from "@ai-sdk/xai";
-import { createVertex as createGoogleVertex } from "@ai-sdk/google-vertex";
-import { createAzure } from "@ai-sdk/azure";
-import { LanguageModelV2 } from "@ai-sdk/provider";
-import { createOpenRouter } from "@openrouter/ai-sdk-provider";
-import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { createAmazonBedrock } from "@ai-sdk/amazon-bedrock";
+import { createAnthropic } from "@ai-sdk/anthropic";
+import { createAzure } from "@ai-sdk/azure";
+import { createGoogleGenerativeAI as createGoogle } from "@ai-sdk/google";
+import { createVertex as createGoogleVertex } from "@ai-sdk/google-vertex";
+import { createOpenAI } from "@ai-sdk/openai";
+import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
+import { LanguageModelV2 } from "@ai-sdk/provider";
+import { createXai } from "@ai-sdk/xai";
+import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import type {
+  AzureProviderSetting,
   LargeLanguageModel,
   UserSettings,
   VertexProviderSetting,
-  AzureProviderSetting,
+  GoogleProviderSetting,
+  OpenAIProviderSetting,
 } from "../../lib/schemas";
-import { getEnvVar } from "./read_env";
-import log from "electron-log";
+import { LanguageModelProvider } from "../ipc_types";
 import { FREE_OPENROUTER_MODEL_NAMES } from "../shared/language_model_constants";
 import { getLanguageModelProviders } from "../shared/language_model_helpers";
-import { LanguageModelProvider } from "../ipc_types";
 import { createDyadEngine } from "./llm_engine_provider";
+import { getEnvVar } from "./read_env";
+import log from "electron-log";
 
-import { LM_STUDIO_BASE_URL } from "./lm_studio_utils";
-import { createOllamaProvider } from "./ollama_provider";
 import { getOllamaApiUrl } from "../handlers/local_model_ollama_handler";
 import { createFallback } from "./fallback_ai_model";
+import { LM_STUDIO_BASE_URL } from "./lm_studio_utils";
+import { createOllamaProvider } from "./ollama_provider";
+import {
+  createCodexCliModel,
+  ensureCodexCliAvailable,
+} from "./codex_cli_provider";
+import {
+  createGeminiCliModel,
+  ensureGeminiCliAvailable,
+} from "./gemini_cli_provider";
 
 const dyadEngineUrl = process.env.DYAD_ENGINE_URL;
+const dyadGatewayUrl = process.env.DYAD_GATEWAY_URL;
+
+const logger = log.scope("getModelClient");
 
 const AUTO_MODELS = [
   {
@@ -52,19 +65,22 @@ export interface ModelClient {
   builtinProviderId?: string;
 }
 
-const logger = log.scope("getModelClient");
+interface File {
+  path: string;
+  content: string;
+}
+
 export async function getModelClient(
   model: LargeLanguageModel,
   settings: UserSettings,
-  // files?: File[],
+  files?: File[],
 ): Promise<{
   modelClient: ModelClient;
   isEngineEnabled?: boolean;
-  isSmartContextEnabled?: boolean;
 }> {
   const allProviders = await getLanguageModelProviders();
 
-  const dyadApiKey = settings.providerSettings?.auto?.apiKey?.value;
+  const dyadApiKey = (settings.providerSettings?.auto as any)?.apiKey?.value;
 
   // --- Handle specific provider ---
   const providerConfig = allProviders.find((p) => p.id === model.provider);
@@ -80,48 +96,55 @@ export async function getModelClient(
     // IMPORTANT: some providers like OpenAI have an empty string gateway prefix,
     // so we do a nullish and not a truthy check here.
     if (providerConfig.gatewayPrefix != null || dyadEngineUrl) {
-      const enableSmartFilesContext = settings.enableProSmartFilesContextMode;
-      const provider = createDyadEngine({
-        apiKey: dyadApiKey,
-        baseURL: dyadEngineUrl ?? "https://engine.dyad.sh/v1",
-        originalProviderId: model.provider,
-        dyadOptions: {
-          enableLazyEdits:
-            settings.selectedChatMode === "ask"
-              ? false
-              : settings.enableProLazyEditsMode,
-          enableSmartFilesContext,
-          // Keep in sync with getCurrentValue in ProModeSelector.tsx
-          smartContextMode: settings.proSmartContextOption ?? "balanced",
-          enableWebSearch: settings.enableProWebSearch,
-        },
-        settings,
-      });
+      const isEngineEnabled =
+        settings.enableProSmartFilesContextMode ||
+        settings.enableProLazyEditsMode ||
+        settings.enableProWebSearch;
+      const provider = isEngineEnabled
+        ? createDyadEngine({
+            apiKey: dyadApiKey,
+            baseURL: dyadEngineUrl ?? "https://engine.dyad.sh/v1",
+            originalProviderId: model.provider,
+            dyadOptions: {
+              enableLazyEdits:
+                settings.selectedChatMode === "ask"
+                  ? false
+                  : settings.enableProLazyEditsMode,
+              enableSmartFilesContext: settings.enableProSmartFilesContextMode,
+              // Keep in sync with getCurrentValue in ProModeSelector.tsx
+              smartContextMode: settings.proSmartContextOption ?? "balanced",
+              enableWebSearch: settings.enableProWebSearch,
+            },
+            settings,
+          })
+        : createOpenAICompatible({
+            name: "dyad-gateway",
+            apiKey: dyadApiKey,
+            baseURL: dyadGatewayUrl ?? "https://llm-gateway.dyad.sh/v1",
+          });
 
-      logger.info(
-        `\x1b[1;97;44m Using Dyad Pro API key for model: ${model.name} \x1b[0m`,
-      );
-
-      logger.info(
-        `\x1b[1;30;42m Using Dyad Pro engine: ${dyadEngineUrl ?? "<prod>"} \x1b[0m`,
-      );
-
+      if (isEngineEnabled) {
+      } else {
+      }
       // Do not use free variant (for openrouter).
       const modelName = model.name.split(":free")[0];
       const autoModelClient = {
-        model: provider(`${providerConfig.gatewayPrefix || ""}${modelName}`),
+        model: provider(
+          `${providerConfig.gatewayPrefix || ""}${modelName}`,
+          isEngineEnabled
+            ? {
+                files,
+              }
+            : undefined,
+        ),
         builtinProviderId: model.provider,
       };
 
       return {
         modelClient: autoModelClient,
-        isEngineEnabled: true,
-        isSmartContextEnabled: enableSmartFilesContext,
+        isEngineEnabled,
       };
     } else {
-      logger.warn(
-        `Dyad Pro enabled, but provider ${model.provider} does not have a gateway prefix defined. Falling back to direct provider connection.`,
-      );
       // Fall through to regular provider logic if gateway prefix is missing
     }
   }
@@ -137,13 +160,15 @@ export async function getModelClient(
       return {
         modelClient: {
           model: createFallback({
-            models: FREE_OPENROUTER_MODEL_NAMES.map(
-              (name: string) =>
-                getRegularModelClient(
-                  { provider: "openrouter", name },
-                  settings,
-                  openRouterProvider,
-                ).modelClient.model,
+            models: await Promise.all(
+              FREE_OPENROUTER_MODEL_NAMES.map(
+                async (name: string) =>
+                  (await getRegularModelClient(
+                    { provider: "openrouter", name },
+                    settings,
+                    openRouterProvider,
+                  )).modelClient.model,
+              )
             ),
           }),
           builtinProviderId: "openrouter",
@@ -158,13 +183,10 @@ export async function getModelClient(
       const envVarName = providerInfo?.envVarName;
 
       const apiKey =
-        settings.providerSettings?.[autoModel.provider]?.apiKey?.value ||
+        (settings.providerSettings?.[autoModel.provider] as any)?.apiKey?.value ||
         (envVarName ? getEnvVar(envVarName) : undefined);
 
       if (apiKey) {
-        logger.log(
-          `Using provider: ${autoModel.provider} model: ${autoModel.name}`,
-        );
         // Recursively call with the specific model found
         return await getModelClient(
           {
@@ -172,6 +194,7 @@ export async function getModelClient(
             name: autoModel.name,
           },
           settings,
+          files,
         );
       }
     }
@@ -180,20 +203,20 @@ export async function getModelClient(
       "No API keys available for any model supported by the 'auto' provider.",
     );
   }
-  return getRegularModelClient(model, settings, providerConfig);
+  return await getRegularModelClient(model, settings, providerConfig);
 }
 
-function getRegularModelClient(
+async function getRegularModelClient(
   model: LargeLanguageModel,
   settings: UserSettings,
   providerConfig: LanguageModelProvider,
-): {
+): Promise<{
   modelClient: ModelClient;
   backupModelClients: ModelClient[];
-} {
+}> {
   // Get API key for the specific provider
   const apiKey =
-    settings.providerSettings?.[model.provider]?.apiKey?.value ||
+    (settings.providerSettings?.[model.provider] as any)?.apiKey?.value ||
     (providerConfig.envVarName
       ? getEnvVar(providerConfig.envVarName)
       : undefined);
@@ -201,16 +224,6 @@ function getRegularModelClient(
   const providerId = providerConfig.id;
   // Create client based on provider ID or type
   switch (providerId) {
-    case "openai": {
-      const provider = createOpenAI({ apiKey });
-      return {
-        modelClient: {
-          model: provider.responses(model.name),
-          builtinProviderId: providerId,
-        },
-        backupModelClients: [],
-      };
-    }
     case "anthropic": {
       const provider = createAnthropic({ apiKey });
       return {
@@ -232,7 +245,162 @@ function getRegularModelClient(
       };
     }
     case "google": {
+      const googleSettings = settings.providerSettings?.google as
+        | GoogleProviderSetting
+        | undefined;
+
+      const connectionMode = googleSettings?.connectionMode ?? "api";
+      const cliFallbackToApi = googleSettings?.cliFallbackToApi ?? true;
+      const cliPreferredModels = googleSettings?.cliPreferredModels;
+      const cliTimeoutMs = googleSettings?.cliTimeoutMs;
+      const cliAutoDetect = googleSettings?.cliAutoDetect ?? true;
+
+      // Attempt CLI mode if requested.
+      if (connectionMode !== "api") {
+        try {
+          const cliInfo = await ensureGeminiCliAvailable({
+            explicitPath: googleSettings?.cliPath,
+            autoDetect: cliAutoDetect,
+          });
+
+          if (!cliInfo.path) {
+            throw new Error("Gemini CLI path could not be resolved.");
+          }
+
+          const cliModelId = selectCliModel(model.name, cliPreferredModels);
+
+          const cliModel = await createGeminiCliModel(cliModelId, {
+            cliPath: cliInfo.path,
+            timeoutMs: cliTimeoutMs,
+          });
+
+          return {
+            modelClient: {
+              model: cliModel,
+              builtinProviderId: providerId,
+            },
+            backupModelClients: [],
+          };
+        } catch (error) {
+          logger.warn(
+            "Gemini CLI unavailable or failed, evaluating API fallback",
+            error,
+          );
+
+          const allowFallback =
+            connectionMode === "auto" || cliFallbackToApi === true;
+
+          if (!allowFallback) {
+            throw new Error(
+              error instanceof Error
+                ? error.message
+                : JSON.stringify(error ?? "Gemini CLI failed"),
+            );
+          }
+
+          if (!apiKey) {
+            throw new Error(
+              "Gemini CLI is unavailable and no Gemini API key is configured for fallback. Provide an API key or fix the CLI configuration.",
+            );
+          }
+        }
+      }
+
+      if (!apiKey) {
+        throw new Error(
+          "Gemini API key is not configured. Provide it in Settings or set GEMINI_API_KEY.",
+        );
+      }
+
       const provider = createGoogle({ apiKey });
+      return {
+        modelClient: {
+          model: provider(model.name),
+          builtinProviderId: providerId,
+        },
+        backupModelClients: [],
+      };
+    }
+    case "openai": {
+      const openAiSettings = settings.providerSettings?.openai as
+        | OpenAIProviderSetting
+        | undefined;
+
+      const connectionMode = openAiSettings?.connectionMode ?? "api";
+      const cliFallbackToApi = openAiSettings?.cliFallbackToApi ?? true;
+      const cliPreferredModels = openAiSettings?.cliPreferredModels;
+      const cliTimeoutMs = openAiSettings?.cliTimeoutMs;
+      const cliAutoDetect = openAiSettings?.cliAutoDetect ?? true;
+
+      if (connectionMode !== "api") {
+        try {
+          const cliInfo = await ensureCodexCliAvailable({
+            explicitPath: openAiSettings?.cliPath,
+            autoDetect: cliAutoDetect,
+          });
+
+          if (!cliInfo.path) {
+            throw new Error("Codex CLI path could not be resolved.");
+          }
+
+          const cliModelId = selectCliModel(model.name, cliPreferredModels);
+
+          const cliModel = await createCodexCliModel(cliModelId, {
+            cliPath: cliInfo.path,
+            timeoutMs: cliTimeoutMs,
+            apiKey,
+          });
+
+          return {
+            modelClient: {
+              model: cliModel,
+              builtinProviderId: providerId,
+            },
+            backupModelClients: [],
+          };
+        } catch (error) {
+          logger.warn(
+            "Codex CLI unavailable or failed, evaluating API fallback",
+            error,
+          );
+
+          const allowFallback =
+            connectionMode === "auto" || cliFallbackToApi === true;
+
+          if (!allowFallback) {
+            throw new Error(
+              error instanceof Error
+                ? error.message
+                : JSON.stringify(error ?? "Codex CLI failed"),
+            );
+          }
+
+          if (!apiKey) {
+            throw new Error(
+              "Codex CLI is unavailable and no OpenAI API key is configured for fallback. Provide an API key or fix the CLI configuration.",
+            );
+          }
+        }
+      }
+
+      const shouldUseApiFallback =
+        connectionMode === "api" ||
+        connectionMode === "auto" ||
+        cliFallbackToApi === true;
+
+      if (!shouldUseApiFallback) {
+        throw new Error(
+          "Codex CLI is not available and API fallback is disabled. Install the Codex CLI or enable fallback to continue.",
+        );
+      }
+
+      if (!apiKey) {
+        throw new Error(
+          "OpenAI API key is required when using API mode or fallback. Provide it in Settings or set OPENAI_API_KEY.",
+        );
+      }
+
+      const provider = createOpenAI({ apiKey });
       return {
         modelClient: {
           model: provider(model.name),
@@ -291,26 +459,6 @@ function getRegularModelClient(
       };
     }
     case "azure": {
-      // Check if we're in e2e testing mode
-      const testAzureBaseUrl = getEnvVar("TEST_AZURE_BASE_URL");
-
-      if (testAzureBaseUrl) {
-        // Use fake server for e2e testing
-        logger.info(`Using test Azure base URL: ${testAzureBaseUrl}`);
-        const provider = createOpenAICompatible({
-          name: "azure-test",
-          baseURL: testAzureBaseUrl,
-          apiKey: "fake-api-key-for-testing",
-        });
-        return {
-          modelClient: {
-            model: provider(model.name),
-            builtinProviderId: providerId,
-          },
-          backupModelClients: [],
-        };
-      }
-
       const azureSettings = settings.providerSettings?.azure as
         | AzureProviderSetting
         | undefined;
@@ -415,4 +563,17 @@ function getRegularModelClient(
       throw new Error(`Unsupported model provider: ${model.provider}`);
     }
   }
+}
+
+function selectCliModel(
+  requestedModel: string,
+  preferredModels: string[] | undefined,
+) {
+  if (preferredModels && preferredModels.length > 0) {
+    if (preferredModels.includes(requestedModel)) {
+      return requestedModel;
+    }
+    return preferredModels[0];
+  }
+  return requestedModel;
 }

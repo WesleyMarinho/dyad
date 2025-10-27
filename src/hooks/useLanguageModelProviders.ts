@@ -6,6 +6,8 @@ import {
   cloudProviders,
   VertexProviderSetting,
   AzureProviderSetting,
+  GoogleProviderSetting,
+  OpenAIProviderSetting,
 } from "@/lib/schemas";
 
 export function useLanguageModelProviders() {
@@ -24,6 +26,54 @@ export function useLanguageModelProviders() {
     if (queryResult.isLoading) {
       return false;
     }
+
+    if (provider === "google") {
+      const googleSettings = providerSettings as
+        | GoogleProviderSetting
+        | undefined;
+      const connectionMode = googleSettings?.connectionMode ?? "api";
+
+      if (connectionMode !== "api") {
+        const hasExplicitPath = Boolean(
+          googleSettings?.cliPath && googleSettings.cliPath.trim(),
+        );
+        const hasEnvPath = Boolean(envVars["GEMINI_CLI_PATH"]);
+
+        if (
+          hasExplicitPath ||
+          hasEnvPath ||
+          googleSettings?.cliAutoDetect !== false
+        ) {
+          return true;
+        }
+      }
+    }
+
+    if (provider === "openai" || provider === "codex") {
+      const openAiSettings = (provider === "codex"
+        ? (settings?.providerSettings?.openai as
+            | OpenAIProviderSetting
+            | undefined)
+        : (providerSettings as OpenAIProviderSetting | undefined)) ??
+        undefined;
+      const connectionMode = openAiSettings?.connectionMode ?? "api";
+
+      if (connectionMode !== "api") {
+        const hasExplicitPath = Boolean(
+          openAiSettings?.cliPath && openAiSettings.cliPath.trim(),
+        );
+        const hasEnvPath = Boolean(envVars["CODEX_CLI_PATH"]);
+
+        if (
+          hasExplicitPath ||
+          hasEnvPath ||
+          openAiSettings?.cliAutoDetect !== false
+        ) {
+          return true;
+        }
+      }
+    }
+
     // Vertex uses service account credentials instead of an API key
     if (provider === "vertex") {
       const vertexSettings = providerSettings as VertexProviderSetting;
@@ -61,7 +111,12 @@ export function useLanguageModelProviders() {
   };
 
   const isAnyProviderSetup = () => {
-    return cloudProviders.some((provider) => isProviderSetup(provider));
+    // Check all available providers, not just cloud providers
+    // This includes custom providers added by the user
+    if (!queryResult.data) {
+      return false;
+    }
+    return queryResult.data.some((provider) => isProviderSetup(provider.id));
   };
 
   return {

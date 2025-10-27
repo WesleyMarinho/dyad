@@ -1,84 +1,82 @@
-import type { IpcRenderer } from "electron";
-import {
-  type ChatSummary,
-  ChatSummariesSchema,
-  type UserSettings,
-  type ContextPathResults,
-  ChatSearchResultsSchema,
-  AppSearchResultsSchema,
-} from "../lib/schemas";
 import type {
-  AppOutput,
-  Chat,
-  ChatResponseEnd,
-  ChatProblemsEvent,
-  CreateAppParams,
-  CreateAppResult,
-  ListAppsResponse,
-  NodeSystemInfo,
-  Message,
-  Version,
-  SystemDebugInfo,
-  LocalModel,
-  TokenCountParams,
-  TokenCountResult,
-  ChatLogsData,
-  BranchResult,
-  LanguageModelProvider,
-  LanguageModel,
-  CreateCustomLanguageModelProviderParams,
-  CreateCustomLanguageModelParams,
-  DoesReleaseNoteExistParams,
-  ApproveProposalResult,
-  ImportAppResult,
-  ImportAppParams,
-  RenameBranchParams,
-  UserBudgetInfo,
-  CopyAppParams,
-  App,
-  ComponentSelection,
-  AppUpgrade,
-  ProblemReport,
-  EditAppFileReturnType,
-  GetAppEnvVarsParams,
-  SetAppEnvVarsParams,
-  ConnectToExistingVercelProjectParams,
-  IsVercelProjectAvailableResponse,
-  CreateVercelProjectParams,
-  VercelDeployment,
-  GetVercelDeploymentsParams,
-  DisconnectVercelProjectParams,
-  IsVercelProjectAvailableParams,
-  SaveVercelAccessTokenParams,
-  VercelProject,
-  UpdateChatParams,
-  FileAttachment,
-  CreateNeonProjectParams,
-  NeonProject,
-  GetNeonProjectParams,
-  GetNeonProjectResponse,
-  RevertVersionResponse,
-  RevertVersionParams,
-  RespondToAppInputParams,
-  PromptDto,
-  CreatePromptParamsDto,
-  UpdatePromptParamsDto,
-  McpServerUpdate,
-  CreateMcpServer,
-  CloneRepoParams,
-  SupabaseBranch,
-  SetSupabaseAppProjectParams,
-  SelectNodeFolderResult,
-} from "./ipc_types";
-import type { Template } from "../shared/templates";
-import type {
-  AppChatContext,
-  AppSearchResult,
-  ChatSearchResult,
-  ProposalResult,
+    AppChatContext,
+    AppSearchResult,
+    ChatSearchResult,
+    ProposalResult,
 } from "@/lib/schemas";
 import { showError } from "@/lib/toast";
-import { DeepLinkData } from "./deep_link_data";
+import type { IpcRenderer } from "electron";
+import {
+    type ChatSummary,
+    type ContextPathResults,
+    type UserSettings,
+    AppSearchResultsSchema,
+    ChatSearchResultsSchema,
+    ChatSummariesSchema,
+} from "../lib/schemas";
+import type { Template } from "../shared/templates";
+import type {
+    App,
+    AppOutput,
+    ApproveProposalResult,
+    AppUpgrade,
+    BranchResult,
+    Chat,
+    ChatLogsData,
+    ChatProblemsEvent,
+    ChatResponseEnd,
+    CloneRepoParams,
+    ComponentSelection,
+    ConnectToExistingVercelProjectParams,
+    CopyAppParams,
+    CreateAppParams,
+    CreateAppResult,
+    CreateCustomLanguageModelParams,
+    CreateCustomLanguageModelProviderParams,
+    CreateMcpServer,
+    CreateNeonProjectParams,
+    CreatePromptParamsDto,
+    CreateVercelProjectParams,
+    DisconnectVercelProjectParams,
+    DoesReleaseNoteExistParams,
+    EditAppFileReturnType,
+    FileAttachment,
+    GetAppEnvVarsParams,
+    GetNeonProjectParams,
+    GetNeonProjectResponse,
+    GetVercelDeploymentsParams,
+    ImportAppParams,
+    ImportAppResult,
+    IsVercelProjectAvailableParams,
+    IsVercelProjectAvailableResponse,
+    LanguageModel,
+    LanguageModelProvider,
+    ListAppsResponse,
+    LocalModel,
+    McpServerUpdate,
+    Message,
+    NeonProject,
+    NodeSystemInfo,
+    ProblemReport,
+    PromptDto,
+    RenameBranchParams,
+    RespondToAppInputParams,
+    RevertVersionParams,
+    RevertVersionResponse,
+    SaveVercelAccessTokenParams,
+    SetAppEnvVarsParams,
+    SystemDebugInfo,
+    TokenCountParams,
+    TokenCountResult,
+    UpdateChatParams,
+    UpdatePromptParamsDto,
+    UserBudgetInfo,
+    VercelDeployment,
+    VercelProject,
+    Version,
+} from "./ipc_types";
+import type { GeminiCliInfo } from "./utils/gemini_cli_detector";
+import type { CodexCliInfo } from "./utils/codex_cli_detector";
 
 export interface ChatStreamCallbacks {
   onUpdate: (messages: Message[]) => void;
@@ -102,6 +100,10 @@ export interface GitHubDeviceFlowSuccessData {
 
 export interface GitHubDeviceFlowErrorData {
   error: string;
+}
+
+export interface DeepLinkData {
+  type: string;
 }
 
 interface DeleteCustomModelParams {
@@ -690,7 +692,7 @@ export class IpcClient {
     callback: (data: GitHubDeviceFlowUpdateData) => void,
   ): () => void {
     const listener = (data: any) => {
-      console.log("github:flow-update", data);
+      
       callback(data as GitHubDeviceFlowUpdateData);
     };
     this.ipcRenderer.on("github:flow-update", listener);
@@ -704,7 +706,7 @@ export class IpcClient {
     callback: (data: GitHubDeviceFlowSuccessData) => void,
   ): () => void {
     const listener = (data: any) => {
-      console.log("github:flow-success", data);
+      
       callback(data as GitHubDeviceFlowSuccessData);
     };
     this.ipcRenderer.on("github:flow-success", listener);
@@ -717,7 +719,7 @@ export class IpcClient {
     callback: (data: GitHubDeviceFlowErrorData) => void,
   ): () => void {
     const listener = (data: any) => {
-      console.log("github:flow-error", data);
+      
       callback(data as GitHubDeviceFlowErrorData);
     };
     this.ipcRenderer.on("github:flow-error", listener);
@@ -961,16 +963,14 @@ export class IpcClient {
     return this.ipcRenderer.invoke("supabase:list-projects");
   }
 
-  public async listSupabaseBranches(params: {
-    projectId: string;
-  }): Promise<SupabaseBranch[]> {
-    return this.ipcRenderer.invoke("supabase:list-branches", params);
-  }
-
   public async setSupabaseAppProject(
-    params: SetSupabaseAppProjectParams,
+    project: string,
+    app: number,
   ): Promise<void> {
-    await this.ipcRenderer.invoke("supabase:set-app-project", params);
+    await this.ipcRenderer.invoke("supabase:set-app-project", {
+      project,
+      app,
+    });
   }
 
   public async unsetSupabaseAppProject(app: number): Promise<void> {
@@ -1120,6 +1120,26 @@ export class IpcClient {
     return this.ipcRenderer.invoke("get-language-model-providers");
   }
 
+  public async detectGeminiCli(options?: {
+    explicitPath?: string;
+    autoDetect?: boolean;
+  }): Promise<GeminiCliInfo> {
+    return this.ipcRenderer.invoke(
+      "language-models:detect-gemini-cli",
+      options,
+    );
+  }
+
+  public async detectCodexCli(options?: {
+    explicitPath?: string;
+    autoDetect?: boolean;
+  }): Promise<CodexCliInfo> {
+    return this.ipcRenderer.invoke(
+      "language-models:detect-codex-cli",
+      options,
+    );
+  }
+
   public async getLanguageModels(params: {
     providerId: string;
   }): Promise<LanguageModel[]> {
@@ -1179,16 +1199,6 @@ export class IpcClient {
     name: string | null;
   }> {
     return this.ipcRenderer.invoke("select-app-folder");
-  }
-
-  // Add these methods to IpcClient class
-
-  public async selectNodeFolder(): Promise<SelectNodeFolderResult> {
-    return this.ipcRenderer.invoke("select-node-folder");
-  }
-
-  public async getNodePath(): Promise<string | null> {
-    return this.ipcRenderer.invoke("get-node-path");
   }
 
   public async checkAiRules(params: {
@@ -1261,6 +1271,19 @@ export class IpcClient {
 
   public async openAndroid(params: { appId: number }): Promise<void> {
     return this.ipcRenderer.invoke("open-android", params);
+  }
+
+  // Expo methods
+  public async isExpo(params: { appId: number }): Promise<boolean> {
+    return this.ipcRenderer.invoke("is-expo", params);
+  }
+
+  public async expoOpenAndroid(params: { appId: number }): Promise<void> {
+    return this.ipcRenderer.invoke("expo-open-android", params);
+  }
+
+  public async expoOpenIos(params: { appId: number }): Promise<void> {
+    return this.ipcRenderer.invoke("expo-open-ios", params);
   }
 
   public async checkProblems(params: {

@@ -1,5 +1,6 @@
 import React, { useState, useRef } from "react";
 import type { FileAttachment } from "@/ipc/ipc_types";
+import { showInfo } from "@/lib/toast";
 
 export function useAttachments() {
   const [attachments, setAttachments] = useState<FileAttachment[]>([]);
@@ -115,7 +116,7 @@ export function useAttachments() {
       if (imageFiles.length > 0) {
         addAttachments(imageFiles, "chat-context");
         // Show a brief toast or indication that image was pasted
-        console.log(`Pasted ${imageFiles.length} image(s) from clipboard`);
+        showInfo("Image pasted from clipboard");
       }
     }
   };

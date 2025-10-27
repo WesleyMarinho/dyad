@@ -81,6 +81,16 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       temperature: 0,
       dollarSigns: 2,
     },
+    // https://platform.openai.com/docs/models/o4
+    {
+      name: "o4",
+      displayName: "o4",
+      description: "OpenAI's advanced reasoning model",
+      maxOutputTokens: 32_000,
+      contextWindow: 200_000,
+      temperature: 0,
+      dollarSigns: 3,
+    },
   ],
   // https://docs.anthropic.com/en/docs/about-claude/models/all-models#model-comparison-table
   anthropic: [
@@ -211,15 +221,6 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       contextWindow: 128_000,
       temperature: 0,
       dollarSigns: 0,
-    },
-    {
-      name: "z-ai/glm-4.6",
-      displayName: "GLM 4.6",
-      description: "Z-AI's best coding model",
-      maxOutputTokens: 32_000,
-      contextWindow: 200_000,
-      temperature: 0,
-      dollarSigns: 2,
     },
     {
       name: "qwen/qwen3-coder",

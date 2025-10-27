@@ -28,10 +28,10 @@ import {
   selectedChatIdAtom,
 } from "@/atoms/chatAtoms";
 import { atom, useAtom, useSetAtom, useAtomValue } from "jotai";
-import { useStreamChat } from "@/hooks/useStreamChat";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { Button } from "@/components/ui/button";
 import { useProposal } from "@/hooks/useProposal";
+import { useStreamChat } from "@/hooks/useStreamChat";
 import {
   ActionProposal,
   Proposal,
@@ -67,7 +67,7 @@ import { useCheckProblems } from "@/hooks/useCheckProblems";
 import { LexicalChatInput } from "./LexicalChatInput";
 import { useChatModeToggle } from "@/hooks/useChatModeToggle";
 
-const showTokenBarAtom = atom(false);
+const showTokenBarAtom = atom(true);
 
 export function ChatInput({ chatId }: { chatId?: number }) {
   const posthog = usePostHog();
@@ -75,8 +75,6 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const { settings } = useSettings();
   const appId = useAtomValue(selectedAppIdAtom);
   const { refreshVersions } = useVersions(appId);
-  const { streamMessage, isStreaming, setIsStreaming, error, setError } =
-    useStreamChat();
   const [showError, setShowError] = useState(true);
   const [isApproving, setIsApproving] = useState(false); // State for approving
   const [isRejecting, setIsRejecting] = useState(false); // State for rejecting
@@ -108,6 +106,8 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     error: proposalError,
     refreshProposal,
   } = useProposal(chatId);
+  const { streamMessage, isStreaming, setIsStreaming, error, setError } =
+    useStreamChat({ refreshProposal });
   const { proposal, messageId } = proposalResult ?? {};
   useChatModeToggle();
 
@@ -351,7 +351,6 @@ export function ChatInput({ chatId }: { chatId?: number }) {
                       showTokenBar ? "text-purple-500 bg-purple-100" : ""
                     }`}
                     size="sm"
-                    data-testid="token-bar-toggle"
                   >
                     <ChartColumnIncreasing size={14} />
                   </Button>

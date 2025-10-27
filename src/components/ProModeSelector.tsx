@@ -53,9 +53,18 @@ export function ProModeSelector() {
   };
 
   const toggleProEnabled = () => {
-    updateSettings({
-      enableDyadPro: !settings?.enableDyadPro,
-    });
+    const enabling = !settings?.enableDyadPro;
+    const updates: Partial<UserSettings> = {
+      enableDyadPro: enabling,
+    };
+    if (enabling) {
+      updates.enableProSmartFilesContextMode = true;
+      updates.enableProLazyEditsMode = true;
+      if (!settings?.proSmartContextOption) {
+        updates.proSmartContextOption = "balanced";
+      }
+    }
+    updateSettings(updates);
   };
 
   const hasProKey = settings ? hasDyadProKey(settings) : false;

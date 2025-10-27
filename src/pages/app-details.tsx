@@ -1,27 +1,14 @@
-import { useNavigate, useRouter, useSearch } from "@tanstack/react-router";
-import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import {
   appBasePathAtom,
   appsListAtom,
   selectedAppIdAtom,
 } from "@/atoms/appAtoms";
-import { IpcClient } from "@/ipc/ipc_client";
-import { useLoadApps } from "@/hooks/useLoadApps";
-import { useState } from "react";
+import { AppUpgrades } from "@/components/AppUpgrades";
+import { CapacitorControls } from "@/components/CapacitorControls";
+import { ExpoControls } from "@/components/ExpoControls";
+import { GitHubConnector } from "@/components/GitHubConnector";
+import { SupabaseConnector } from "@/components/SupabaseConnector";
 import { Button } from "@/components/ui/button";
-import {
-  ArrowLeft,
-  MoreVertical,
-  MessageCircle,
-  Pencil,
-  Folder,
-} from "lucide-react";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
@@ -30,17 +17,31 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { GitHubConnector } from "@/components/GitHubConnector";
-import { SupabaseConnector } from "@/components/SupabaseConnector";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { useCheckName } from "@/hooks/useCheckName";
+import { useDebounce } from "@/hooks/useDebounce";
+import { invalidateAppQuery } from "@/hooks/useLoadApp";
+import { useLoadApps } from "@/hooks/useLoadApps";
+import { IpcClient } from "@/ipc/ipc_client";
 import { showError } from "@/lib/toast";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Label } from "@/components/ui/label";
-import { Loader2 } from "lucide-react";
-import { invalidateAppQuery } from "@/hooks/useLoadApp";
-import { useDebounce } from "@/hooks/useDebounce";
-import { useCheckName } from "@/hooks/useCheckName";
-import { AppUpgrades } from "@/components/AppUpgrades";
-import { CapacitorControls } from "@/components/CapacitorControls";
+import { useNavigate, useRouter, useSearch } from "@tanstack/react-router";
+import { useAtom, useAtomValue, useSetAtom } from "jotai";
+import {
+  ArrowLeft,
+  Folder,
+  Loader2,
+  MessageCircle,
+  MoreVertical,
+  Pencil,
+} from "lucide-react";
+import { useCallback, useState } from "react";
 
 export default function AppDetailsPage() {
   const navigate = useNavigate();
@@ -72,6 +73,14 @@ export default function AppDetailsPage() {
     debouncedNewCopyAppName,
   );
   const nameExists = checkNameResult?.exists ?? false;
+
+  const handleBack = useCallback(() => {
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      window.history.back();
+    } else {
+      navigate({ to: "/" });
+    }
+  }, [navigate]);
 
   // Get the appId from search params and find the corresponding app
   const appId = search.appId ? Number(search.appId) : null;
@@ -129,8 +138,7 @@ export default function AppDetailsPage() {
     } catch (error) {
       console.error("Failed to rename app:", error);
       alert(
-        `Error renaming app: ${
-          error instanceof Error ? error.message : String(error)
+        `Error renaming app: ${error instanceof Error ? error.message : String(error)
         }`,
       );
     } finally {
@@ -155,8 +163,7 @@ export default function AppDetailsPage() {
     } catch (error) {
       console.error("Failed to rename folder:", error);
       alert(
-        `Error renaming folder: ${
-          error instanceof Error ? error.message : String(error)
+        `Error renaming folder: ${error instanceof Error ? error.message : String(error)
         }`,
       );
     } finally {
@@ -204,7 +211,7 @@ export default function AppDetailsPage() {
     return (
       <div className="relative min-h-screen p-8">
         <Button
-          onClick={() => router.history.back()}
+          onClick={handleBack}
           variant="outline"
           size="sm"
           className="absolute top-4 left-4 flex items-center gap-1 bg-(--background-lightest) py-5"
@@ -227,7 +234,7 @@ export default function AppDetailsPage() {
       data-testid="app-details-page"
     >
       <Button
-        onClick={() => router.history.back()}
+        onClick={handleBack}
         variant="outline"
         size="sm"
         className="absolute top-4 left-4 flex items-center gap-1 bg-(--background-lightest) py-2"
@@ -346,6 +353,8 @@ export default function AppDetailsPage() {
             <GitHubConnector appId={appId} folderName={selectedApp.path} />
           </div>
           {appId && <SupabaseConnector appId={appId} />}
+          {/* Show both controls; each decides visibility based on project type */}
+          {appId && <ExpoControls appId={appId} />}
           {appId && <CapacitorControls appId={appId} />}
           <AppUpgrades appId={appId} />
         </div>

@@ -13,7 +13,10 @@ import { LanguageModelV2 } from "@ai-sdk/provider";
 const logger = log.scope("llm_engine_provider");
 
 export type ExampleChatModelId = string & {};
-export interface ExampleChatSettings {}
+
+export interface ExampleChatSettings {
+  files?: { path: string; content: string }[];
+}
 export interface ExampleProviderSettings {
   /**
 Example API key.
@@ -103,7 +106,13 @@ export function createDyadEngine(
     fetch: options.fetch,
   });
 
-  const createChatModel = (modelId: ExampleChatModelId) => {
+  const createChatModel = (
+    modelId: ExampleChatModelId,
+    settings: ExampleChatSettings = {},
+  ) => {
+    // Extract files from settings to process them appropriately
+    const { files } = settings;
+
     // Create configuration with file handling
     const config = {
       ...getCommonModelConfig(),
@@ -125,10 +134,6 @@ export function createDyadEngine(
               options.settings,
             ),
           };
-          const dyadFiles = parsedBody.dyadFiles;
-          if ("dyadFiles" in parsedBody) {
-            delete parsedBody.dyadFiles;
-          }
           const requestId = parsedBody.dyadRequestId;
           if ("dyadRequestId" in parsedBody) {
             delete parsedBody.dyadRequestId;
@@ -151,15 +156,25 @@ export function createDyadEngine(
           }
 
           // Add files to the request if they exist
-          if (dyadFiles?.length && !dyadDisableFiles) {
+          if (files?.length && !dyadDisableFiles) {
             parsedBody.dyad_options = {
-              files: dyadFiles,
+              files,
               enable_lazy_edits: options.dyadOptions.enableLazyEdits,
               enable_smart_files_context:
                 options.dyadOptions.enableSmartFilesContext,
               smart_context_mode: options.dyadOptions.smartContextMode,
               enable_web_search: options.dyadOptions.enableWebSearch,
             };
+            const forcedCount = files.filter((file) => file.force).length;
+            logger.info("Dyad engine smart context", {
+              enableSmartFilesContext:
+                options.dyadOptions.enableSmartFilesContext,
+              smartContextMode: options.dyadOptions.smartContextMode,
+              enableLazyEdits: options.dyadOptions.enableLazyEdits,
+              enableWebSearch: options.dyadOptions.enableWebSearch,
+              fileCount: files.length,
+              forcedFileCount: forcedCount,
+            });
             if (dyadMentionedApps?.length) {
               parsedBody.dyad_options.mentioned_apps = dyadMentionedApps;
             }
@@ -190,7 +205,10 @@ export function createDyadEngine(
     return new OpenAICompatibleChatLanguageModel(modelId, config);
   };
 
-  const provider = (modelId: ExampleChatModelId) => createChatModel(modelId);
+  const provider = (
+    modelId: ExampleChatModelId,
+    settings?: ExampleChatSettings,
+  ) => createChatModel(modelId, settings);
 
   provider.chatModel = createChatModel;
 

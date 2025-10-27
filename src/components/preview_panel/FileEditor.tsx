@@ -133,7 +133,7 @@ export const FileEditor = ({ appId, filePath }: FileEditorProps) => {
 
     // Listen for model content change events
     editor.onDidBlurEditorText(() => {
-      console.log("Editor text blurred, checking if save needed");
+      
       if (needsSaveRef.current) {
         saveFile();
       }

@@ -1,38 +1,38 @@
+import { and, desc, eq } from "drizzle-orm";
 import { type IpcMainInvokeEvent } from "electron";
+import path from "node:path"; // Import path for basename
+import { db } from "../../db";
+import { chats, messages } from "../../db/schema";
 import type {
+  ActionProposal,
   CodeProposal,
   ProposalResult,
-  ActionProposal,
 } from "../../lib/schemas";
-import { db } from "../../db";
-import { messages, chats } from "../../db/schema";
-import { desc, eq, and } from "drizzle-orm";
-import path from "node:path"; // Import path for basename
 // Import tag parsers
+import { readSettings } from "@/main/settings";
+import log from "electron-log";
+import { getDyadAppPath } from "../../paths/paths";
+import { isServerFunction } from "../../supabase_admin/supabase_utils";
+import { extractCodebase } from "../../utils/codebase";
+import { ApproveProposalResult } from "../ipc_types";
 import { processFullResponseActions } from "../processors/response_processor";
+import { validateChatContext } from "../utils/context_paths_utils";
 import {
-  getDyadWriteTags,
-  getDyadRenameTags,
-  getDyadDeleteTags,
-  getDyadExecuteSqlTags,
   getDyadAddDependencyTags,
   getDyadChatSummaryTag,
   getDyadCommandTags,
+  getDyadDeleteTags,
+  getDyadExecuteSqlTags,
+  getDyadRenameTags,
+  getDyadWriteTags,
 } from "../utils/dyad_tag_parser";
-import log from "electron-log";
-import { isServerFunction } from "../../supabase_admin/supabase_utils";
+import { withLock } from "../utils/lock_utils";
 import {
   estimateMessagesTokens,
   estimateTokens,
   getContextWindow,
 } from "../utils/token_utils";
-import { extractCodebase } from "../../utils/codebase";
-import { getDyadAppPath } from "../../paths/paths";
-import { withLock } from "../utils/lock_utils";
 import { createLoggedHandler } from "./safe_handle";
-import { ApproveProposalResult } from "../ipc_types";
-import { validateChatContext } from "../utils/context_paths_utils";
-import { readSettings } from "@/main/settings";
 
 const logger = log.scope("proposal_handlers");
 const handle = createLoggedHandler(logger);
@@ -291,7 +291,7 @@ const getProposalHandler = async (
         );
 
         const totalTokens = messagesTokenCount + codebaseTokenCount;
-        const contextWindow = Math.min(await getContextWindow(), 100_000);
+        const contextWindow = await getContextWindow();
         logger.log(
           `Token usage: ${totalTokens}/${contextWindow} (${
             (totalTokens / contextWindow) * 100

@@ -85,9 +85,7 @@ try {
 
 /* ---------------------- helper: need to inject? ------------------------ */
 function needsInjection(pathname) {
-  // Inject for routes without a file extension (e.g., "/foo", "/foo/bar", "/")
-  const ext = path.extname(pathname).toLowerCase();
-  return ext === "" || ext === ".html";
+  return pathname.endsWith("index.html") || pathname === "/";
 }
 
 function injectHTML(buf) {
@@ -173,12 +171,13 @@ const server = http.createServer((clientReq, clientRes) => {
       delete headers.referer;
     }
   }
-  if (needsInjection(target.pathname)) {
+  if (needsInjection) {
     // Request uncompressed content from upstream
     delete headers["accept-encoding"];
-    // Avoid getting cached resources.
-    delete headers["if-none-match"];
   }
+
+  if (headers["if-none-match"] && needsInjection(target.pathname))
+    delete headers["if-none-match"];
 
   const upOpts = {
     protocol: target.protocol,
@@ -190,16 +189,7 @@ const server = http.createServer((clientReq, clientRes) => {
   };
 
   const upReq = lib.request(upOpts, (upRes) => {
-    const wantsInjection = needsInjection(target.pathname);
-    // Only inject when upstream indicates HTML content
-    const contentTypeHeader = upRes.headers["content-type"];
-    const contentType = Array.isArray(contentTypeHeader)
-      ? contentTypeHeader[0]
-      : contentTypeHeader || "";
-    const isHtml =
-      typeof contentType === "string" &&
-      contentType.toLowerCase().includes("text/html");
-    const inject = wantsInjection && isHtml;
+    const inject = needsInjection(target.pathname);
 
     if (!inject) {
       clientRes.writeHead(upRes.statusCode, upRes.headers);

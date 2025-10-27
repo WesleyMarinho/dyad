@@ -31,7 +31,7 @@ const TEST_RESPONSES: Record<string, string> = {
   EOM`,
   write: `Hello world
   <dyad-write path="src/hello.ts" content="Hello world">
-  console.log("Hello world");
+  
   </dyad-write>
   EOM`,
   "string-literal-leak": `BEFORE TAG
@@ -72,7 +72,7 @@ export async function streamTestResponse(
   abortController: AbortController,
   updatedChat: any,
 ): Promise<string> {
-  console.log(`Using canned response for test prompt`);
+  
 
   // Simulate streaming by splitting the response into chunks
   const chunks = testResponse.split(" ");

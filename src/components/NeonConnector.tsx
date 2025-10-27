@@ -11,7 +11,7 @@ import { NeonDisconnectButton } from "@/components/NeonDisconnectButton";
 
 export function NeonConnector() {
   const { settings, refreshSettings } = useSettings();
-  const { lastDeepLink, clearLastDeepLink } = useDeepLink();
+  const { lastDeepLink } = useDeepLink();
   const { isDarkMode } = useTheme();
 
   useEffect(() => {
@@ -19,11 +19,10 @@ export function NeonConnector() {
       if (lastDeepLink?.type === "neon-oauth-return") {
         await refreshSettings();
         toast.success("Successfully connected to Neon!");
-        clearLastDeepLink();
       }
     };
     handleDeepLink();
-  }, [lastDeepLink?.timestamp]);
+  }, [lastDeepLink]);
 
   if (settings?.neon?.accessToken) {
     return (

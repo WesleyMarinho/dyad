@@ -138,6 +138,8 @@ export function ModelPicker() {
     return null;
   }
   const selectedModel = settings?.selectedModel;
+  const isSmartAutoEnabled =
+    settings.enableProSmartFilesContextMode && isDyadProEnabled(settings);
   const modelDisplayName = getModelDisplayName();
   // Split providers into primary and secondary groups (excluding auto)
   const providerEntries =
@@ -229,9 +231,19 @@ export function ModelPicker() {
                       >
                         <div className="flex justify-between items-start w-full">
                           <span className="flex flex-col items-start">
-                            <span>{model.displayName}</span>
+                            <span>
+                              {isSmartAutoEnabled && model.apiName === "auto"
+                                ? "Smart Auto"
+                                : model.displayName}
+                            </span>
                           </span>
                           <div className="flex items-center gap-1.5">
+                            {isSmartAutoEnabled &&
+                              !model.displayName.includes("(Pro)") && (
+                                <span className="text-[11px] bg-gradient-to-r from-indigo-600 via-indigo-500 to-indigo-600 bg-[length:200%_100%] animate-[shimmer_5s_ease-in-out_infinite] text-white px-1.5 py-0.5 rounded-full font-medium">
+                                  Pro only
+                                </span>
+                              )}
                             {model.tag && (
                               <span
                                 className={cn(
@@ -247,7 +259,15 @@ export function ModelPicker() {
                       </DropdownMenuItem>
                     </TooltipTrigger>
                     <TooltipContent side="right">
-                      {model.description}
+                      {isSmartAutoEnabled && model.apiName === "auto" ? (
+                        <p>
+                          <strong>Smart Auto</strong> uses a cheaper model for
+                          easier tasks
+                          <br /> and a flagship model for harder tasks
+                        </p>
+                      ) : (
+                        model.description
+                      )}
                     </TooltipContent>
                   </Tooltip>
                 ))}

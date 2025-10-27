@@ -151,9 +151,9 @@ function App() {
       <h1 className="text-2xl font-bold mb-4">My Application</h1>
       
       <div className="space-x-2">
-        <Button onClick={() => console.log('Primary clicked')}>Primary Button</Button>
-        <Button variant="secondary" onClick={() => console.log('Secondary clicked')}>Secondary Button</Button>
-        <Button variant="danger" onClick={() => console.log('Danger clicked')}>Danger Button</Button>
+        <Button onClick={() => }>Primary Button</Button>
+        <Button variant="secondary" onClick={() => }>Secondary Button</Button>
+        <Button variant="danger" onClick={() => }>Danger Button</Button>
       </div>
       
       {/* ... keep existing code (rest of the component) */}

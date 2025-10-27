@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import { Link, useRouterState } from "@tanstack/react-router";
 import { useSidebar } from "@/components/ui/sidebar"; // import useSidebar hook
-import { useEffect, useState, useRef } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import { useAtom } from "jotai";
 import { dropdownOpenAtom } from "@/atoms/uiAtoms";
 
@@ -73,8 +73,28 @@ export function AppSidebar() {
   const expandedByHover = useRef(false);
   const [isHelpDialogOpen, setIsHelpDialogOpen] = useState(false); // State for dialog
   const [isDropdownOpen] = useAtom(dropdownOpenAtom);
+  const collapseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const cancelCollapse = useCallback(() => {
+    if (collapseTimeoutRef.current) {
+      clearTimeout(collapseTimeoutRef.current);
+      collapseTimeoutRef.current = null;
+    }
+  }, []);
+
+  const scheduleCollapse = useCallback(() => {
+    cancelCollapse();
+    collapseTimeoutRef.current = setTimeout(() => {
+      if (!isDropdownOpen) {
+        setHoverState("clear-hover");
+      }
+    }, 400);
+  }, [cancelCollapse, isDropdownOpen]);
 
   useEffect(() => {
+    if (hoverState.startsWith("start-hover")) {
+      cancelCollapse();
+    }
     if (hoverState.startsWith("start-hover") && state === "collapsed") {
       expandedByHover.current = true;
       toggleSidebar();
@@ -89,7 +109,16 @@ export function AppSidebar() {
       expandedByHover.current = false;
       setHoverState("no-hover");
     }
-  }, [hoverState, toggleSidebar, state, setHoverState, isDropdownOpen]);
+  }, [
+    hoverState,
+    toggleSidebar,
+    state,
+    setHoverState,
+    isDropdownOpen,
+    cancelCollapse,
+  ]);
+
+  useEffect(() => () => cancelCollapse(), [cancelCollapse]);
 
   const routerState = useRouterState();
   const isAppRoute =
@@ -120,11 +149,8 @@ export function AppSidebar() {
   return (
     <Sidebar
       collapsible="icon"
-      onMouseLeave={() => {
-        if (!isDropdownOpen) {
-          setHoverState("clear-hover");
-        }
-      }}
+      onMouseEnter={cancelCollapse}
+      onMouseLeave={scheduleCollapse}
     >
       <SidebarContent className="overflow-hidden">
         <div className="flex mt-8">

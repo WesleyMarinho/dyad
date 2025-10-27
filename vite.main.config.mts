@@ -1,5 +1,5 @@
-import { defineConfig } from "vite";
 import path from "path";
+import { defineConfig } from "vite";
 
 // https://vitejs.dev/config
 export default defineConfig({
@@ -10,7 +10,7 @@ export default defineConfig({
   },
   build: {
     rollupOptions: {
-      external: ["better-sqlite3"],
+      external: ["better-sqlite3", "node-fetch", "fs-extra"],
       output: {
         sourcemap: true,
       },

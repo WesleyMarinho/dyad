@@ -1,84 +1,144 @@
-import { v4 as uuidv4 } from "uuid";
-import { ipcMain, IpcMainInvokeEvent } from "electron";
 import {
-  ModelMessage,
-  TextPart,
-  ImagePart,
-  streamText,
-  ToolSet,
-  TextStreamPart,
-  stepCountIs,
   hasToolCall,
+  ImagePart,
+  ModelMessage,
+  stepCountIs,
+  streamText,
+  TextPart,
+  TextStreamPart,
+  ToolSet,
 } from "ai";
+import { ipcMain, IpcMainInvokeEvent, WebContents } from "electron";
+import { v4 as uuidv4 } from "uuid";
 
-import { db } from "../../db";
-import { chats, messages } from "../../db/schema";
+import { MAX_CHAT_TURNS_IN_CONTEXT } from "@/constants/settings_constants";
+import { GoogleGenerativeAIProviderOptions } from "@ai-sdk/google";
+import * as crypto from "crypto";
 import { and, eq, isNull } from "drizzle-orm";
+import log from "electron-log";
+import { readFile, unlink, writeFile } from "fs/promises";
+import fs from "node:fs";
+import * as os from "os";
+import * as path from "path";
+import { db } from "../../db";
+import { chats, mcpServers, messages } from "../../db/schema";
+import { readSettings } from "../../main/settings";
+import { getDyadAppPath } from "../../paths/paths";
+import { SUMMARIZE_CHAT_SYSTEM_PROMPT } from "../../prompts/summarize_chat_system_prompt";
+import {
+  SUPABASE_AVAILABLE_SYSTEM_PROMPT,
+  SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT,
+} from "../../prompts/supabase_prompt";
 import {
   constructSystemPrompt,
   readAiRules,
 } from "../../prompts/system_prompt";
 import {
-  SUPABASE_AVAILABLE_SYSTEM_PROMPT,
-  SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT,
-} from "../../prompts/supabase_prompt";
-import { getDyadAppPath } from "../../paths/paths";
-import { readSettings } from "../../main/settings";
-import type { ChatResponseEnd, ChatStreamParams } from "../ipc_types";
-import {
-  CodebaseFile,
-  extractCodebase,
-  readFileWithCache,
-} from "../../utils/codebase";
-import { processFullResponseActions } from "../processors/response_processor";
-import { streamTestResponse } from "./testing_chat_handlers";
-import { getTestResponse } from "./testing_chat_handlers";
-import { getModelClient, ModelClient } from "../utils/get_model_client";
-import log from "electron-log";
-import {
-  getSupabaseContext,
   getSupabaseClientCode,
+  getSupabaseContext,
 } from "../../supabase_admin/supabase_context";
-import { SUMMARIZE_CHAT_SYSTEM_PROMPT } from "../../prompts/summarize_chat_system_prompt";
-import fs from "node:fs";
-import * as path from "path";
-import * as os from "os";
-import * as crypto from "crypto";
-import { readFile, writeFile, unlink } from "fs/promises";
-import { getMaxTokens, getTemperature } from "../utils/token_utils";
-import { MAX_CHAT_TURNS_IN_CONTEXT } from "@/constants/settings_constants";
+import { extractCodebase, readFileWithCache } from "../../utils/codebase";
+import type { ChatResponseEnd, ChatStreamParams } from "../ipc_types";
+import { processFullResponseActions } from "../processors/response_processor";
 import { validateChatContext } from "../utils/context_paths_utils";
-import { GoogleGenerativeAIProviderOptions } from "@ai-sdk/google";
-import { mcpServers } from "../../db/schema";
+import { getModelClient, ModelClient } from "../utils/get_model_client";
 import { requireMcpToolConsent } from "../utils/mcp_consent";
+import {
+  estimateMessagesTokens,
+  estimateTokens,
+  getContextWindow,
+  getMaxTokens,
+  getTemperature,
+} from "../utils/token_utils";
+import { getTestResponse, streamTestResponse } from "./testing_chat_handlers";
 
 import { getExtraProviderOptions } from "../utils/thinking_utils";
 
-import { safeSend } from "../utils/safe_sender";
-import { cleanFullResponse } from "../utils/cleanFullResponse";
-import { generateProblemReport } from "../processors/tsc";
+import { parseAppMentions } from "@/shared/parse_mention_apps";
 import { createProblemFixPrompt } from "@/shared/problem_prompt";
+import { OpenAIResponsesProviderOptions } from "@ai-sdk/openai";
+import { inArray } from "drizzle-orm";
+import z from "zod";
 import { AsyncVirtualFileSystem } from "../../../shared/VirtualFilesystem";
+import { prompts as promptsTable } from "../../db/schema";
+import type { UserSettings } from "../../lib/schemas";
+import { generateProblemReport } from "../processors/tsc";
+import { cleanFullResponse } from "../utils/cleanFullResponse";
 import {
   getDyadAddDependencyTags,
-  getDyadWriteTags,
   getDyadDeleteTags,
   getDyadRenameTags,
+  getDyadWriteTags,
 } from "../utils/dyad_tag_parser";
-import { fileExists } from "../utils/file_utils";
 import { FileUploadsState } from "../utils/file_uploads_state";
-import { OpenAIResponsesProviderOptions } from "@ai-sdk/openai";
-import { extractMentionedAppsCodebases } from "../utils/mention_apps";
-import { parseAppMentions } from "@/shared/parse_mention_apps";
-import { prompts as promptsTable } from "../../db/schema";
-import { inArray } from "drizzle-orm";
-import { replacePromptReference } from "../utils/replacePromptReference";
+import { fileExists } from "../utils/file_utils";
 import { mcpManager } from "../utils/mcp_manager";
-import z from "zod";
+import { extractMentionedAppsCodebases } from "../utils/mention_apps";
+import { replacePromptReference } from "../utils/replacePromptReference";
+import { safeSend } from "../utils/safe_sender";
 
 type AsyncIterableStream<T> = AsyncIterable<T> & ReadableStream<T>;
 
 const logger = log.scope("chat_stream_handlers");
+
+function extractQuotaError(error: any): string | null {
+  try {
+    const messageParts: string[] = [];
+    const directMessage =
+      error?.error?.message ??
+      error?.message ??
+      (typeof error === "string" ? error : null);
+    if (directMessage) {
+      messageParts.push(directMessage);
+    }
+
+    const responseBody = error?.error?.responseBody;
+    if (typeof responseBody === "string") {
+      messageParts.push(responseBody);
+    }
+
+    const combined = messageParts.join("\n");
+    if (!combined) {
+      return null;
+    }
+
+    const normalized = combined.toLowerCase();
+    if (
+      normalized.includes("quota exceeded") ||
+      normalized.includes("rate_limit_exceeded") ||
+      normalized.includes("resource_exhausted")
+    ) {
+      const relevantLine =
+        combined
+          .split(/\r?\n/)
+          .map((line) => line.trim())
+          .find((line) =>
+            line.toLowerCase().includes("quota exceeded"),
+          ) ??
+        combined
+          .split(/\r?\n/)
+          .map((line) => line.trim())
+          .find((line) =>
+            line.toLowerCase().includes("rate_limit_exceeded"),
+          ) ??
+        combined
+          .split(/\r?\n/)
+          .map((line) => line.trim())
+          .find((line) =>
+            line.toLowerCase().includes("resource_exhausted"),
+          );
+
+      return (
+        relevantLine ??
+        "Gemini quota exceeded. Please try again later or switch providers."
+      );
+    }
+  } catch (parseError) {
+    logger.debug("Failed to parse quota error", parseError);
+  }
+
+  return null;
+}
 
 // Track active streams for cancellation
 const activeStreams = new Map<number, AbortController>();
@@ -100,6 +160,11 @@ const TEXT_FILE_EXTENSIONS = [
   ".html",
   ".css",
 ];
+
+const AUTO_SUMMARY_TRIGGER_RATIO = 0.8;
+const AUTO_SUMMARY_TARGET_RATIO = 0.2;
+const AUTO_SUMMARY_MIN_TAIL_MESSAGES = 2;
+const AUTO_SUMMARY_MAX_PASSES = 3;
 
 async function isTextFile(filePath: string): Promise<boolean> {
   const ext = path.extname(filePath).toLowerCase();
@@ -216,7 +281,7 @@ export function registerChatStreamHandlers() {
       activeStreams.set(req.chatId, abortController);
 
       // Get the chat to check for existing messages
-      const chat = await db.query.chats.findFirst({
+      const chatRecord = await db.query.chats.findFirst({
         where: eq(chats.id, req.chatId),
         with: {
           messages: {
@@ -226,8 +291,69 @@ export function registerChatStreamHandlers() {
         },
       });
 
-      if (!chat) {
+      if (!chatRecord) {
         throw new Error(`Chat not found: ${req.chatId}`);
+      }
+
+      let chat: LoadedChat = {
+        id: chatRecord.id,
+        title: chatRecord.title,
+        createdAt: chatRecord.createdAt,
+        appId: chatRecord.appId,
+        initialCommitHash: chatRecord.initialCommitHash,
+        messages: chatRecord.messages,
+        app: chatRecord.app
+          ? {
+              path: chatRecord.app.path,
+              chatContext: chatRecord.app.chatContext,
+            }
+          : null,
+      };
+
+      const settings = readSettings();
+      let baseCodebaseTokens: number | undefined;
+
+      if (settings.selectedChatMode !== "ask") {
+        const autoSummaryResult = await maybeAutoSummarizeChat({
+          chat,
+          settings,
+          sender: event.sender,
+        });
+        chat = autoSummaryResult.chat;
+        baseCodebaseTokens = autoSummaryResult.baseCodebaseTokens;
+
+        // After auto-summarization, check if we're still over the limit
+        if (settings.enableAutoSummaries && chat.app?.path) {
+          const contextWindow = await getContextWindow();
+          if (baseCodebaseTokens === undefined) {
+            const codebaseOutput = (
+              await extractCodebase({
+                appPath: getDyadAppPath(chat.app.path),
+                chatContext: validateChatContext(chat.app.chatContext),
+              })
+            ).formattedOutput;
+            baseCodebaseTokens = estimateTokens(codebaseOutput);
+          }
+          const codebaseTokens = baseCodebaseTokens ?? 0;
+          const messageTokens = estimateMessagesTokens(chat.messages);
+          const totalTokens = codebaseTokens + messageTokens;
+          const usageRatio = totalTokens / contextWindow;
+
+          // If still over 80% after auto-summarization, notify user
+          if (usageRatio > AUTO_SUMMARY_TRIGGER_RATIO) {
+            logger.warn(
+              `Chat ${chat.id} still at ${(usageRatio * 100).toFixed(1)}% after auto-summarization (${totalTokens}/${contextWindow} tokens)`,
+            );
+            
+            // Send a warning message to the user
+            event.sender.send(`chat-stream-${req.chatId}`, {
+              type: "text-delta",
+              payload: {
+                delta: `\n\n⚠️ **Context window is still at ${(usageRatio * 100).toFixed(0)}%** after auto-summarization. Consider starting a new chat for better performance.\n\n`,
+              },
+            });
+          }
+        }
       }
 
       // Handle redo option: remove the most recent messages if needed
@@ -342,32 +468,40 @@ export function registerChatStreamHandlers() {
       }
       if (req.selectedComponent) {
         let componentSnippet = "[component snippet not available]";
-        try {
-          const componentFileContent = await readFile(
-            path.join(
-              getDyadAppPath(chat.app.path),
-              req.selectedComponent.relativePath,
-            ),
-            "utf8",
+        if (!chat.app?.path) {
+          logger.warn(
+            `Selected component provided but app path not available for chat ${chat.id}`,
           );
-          const lines = componentFileContent.split("\n");
-          const selectedIndex = req.selectedComponent.lineNumber - 1;
+        } else {
+          try {
+            const componentFileContent = await readFile(
+              path.join(
+                getDyadAppPath(chat.app.path),
+                req.selectedComponent.relativePath,
+              ),
+              "utf8",
+            );
+            const lines = componentFileContent.split("\n");
+            const selectedIndex = req.selectedComponent.lineNumber - 1;
 
-          // Let's get one line before and three after for context.
-          const startIndex = Math.max(0, selectedIndex - 1);
-          const endIndex = Math.min(lines.length, selectedIndex + 4);
+            // Let's get one line before and three after for context.
+            const startIndex = Math.max(0, selectedIndex - 1);
+            const endIndex = Math.min(lines.length, selectedIndex + 4);
 
-          const snippetLines = lines.slice(startIndex, endIndex);
-          const selectedLineInSnippetIndex = selectedIndex - startIndex;
+            const snippetLines = lines.slice(startIndex, endIndex);
+            const selectedLineInSnippetIndex = selectedIndex - startIndex;
 
-          if (snippetLines[selectedLineInSnippetIndex]) {
-            snippetLines[selectedLineInSnippetIndex] =
-              `${snippetLines[selectedLineInSnippetIndex]} // <-- EDIT HERE`;
+            if (snippetLines[selectedLineInSnippetIndex]) {
+              snippetLines[selectedLineInSnippetIndex] =
+                `${snippetLines[selectedLineInSnippetIndex]} // <-- EDIT HERE`;
+            }
+
+            componentSnippet = snippetLines.join("\n");
+          } catch (err) {
+            logger.error(
+              `Error reading selected component file content: ${err}`,
+            );
           }
-
-          componentSnippet = snippetLines.join("\n");
-        } catch (err) {
-          logger.error(`Error reading selected component file content: ${err}`);
         }
 
         userPrompt += `\n\nSelected component: ${req.selectedComponent.name} (file: ${req.selectedComponent.relativePath})
@@ -386,7 +520,6 @@ ${componentSnippet}
           content: userPrompt,
         })
         .returning();
-      const settings = readSettings();
       // Only Dyad Pro requests have request ids.
       if (settings.enableDyadPro) {
         // Generate requestId early so it can be saved with the message
@@ -405,7 +538,7 @@ ${componentSnippet}
         .returning();
 
       // Fetch updated chat data after possible deletions and additions
-      const updatedChat = await db.query.chats.findFirst({
+      let updatedChat = await db.query.chats.findFirst({
         where: eq(chats.id, req.chatId),
         with: {
           messages: {
@@ -417,6 +550,51 @@ ${componentSnippet}
 
       if (!updatedChat) {
         throw new Error(`Chat not found: ${req.chatId}`);
+      }
+
+      if (
+        settings.enableAutoSummaries &&
+        settings.selectedChatMode !== "ask" &&
+        updatedChat.app
+      ) {
+        const loadedChat: LoadedChat = {
+          id: updatedChat.id,
+          title: updatedChat.title,
+          createdAt: updatedChat.createdAt,
+          appId: updatedChat.appId,
+          initialCommitHash: updatedChat.initialCommitHash,
+          messages: updatedChat.messages,
+          app: {
+            path: updatedChat.app.path,
+            chatContext: updatedChat.app.chatContext,
+          },
+        };
+
+        const autoSummaryBeforeRequest = await maybeAutoSummarizeChat({
+          chat: loadedChat,
+          settings,
+          sender: event.sender,
+          baseCodebaseTokens,
+        });
+
+        baseCodebaseTokens =
+          autoSummaryBeforeRequest.baseCodebaseTokens ?? baseCodebaseTokens;
+
+        if (autoSummaryBeforeRequest.summarized) {
+          const refreshedChatRecord = await db.query.chats.findFirst({
+            where: eq(chats.id, req.chatId),
+            with: {
+              messages: {
+                orderBy: (messages, { asc }) => [asc(messages.createdAt)],
+              },
+              app: true,
+            },
+          });
+
+          if (refreshedChatRecord) {
+            updatedChat = refreshedChatRecord;
+          }
+        }
       }
 
       // Send the messages right away so that the loading state is shown for the message.
@@ -441,46 +619,27 @@ ${componentSnippet}
         );
       } else {
         // Normal AI processing for non-test prompts
-        const { modelClient, isEngineEnabled, isSmartContextEnabled } =
-          await getModelClient(settings.selectedModel, settings);
 
         const appPath = getDyadAppPath(updatedChat.app.path);
-        // When we don't have smart context enabled, we
-        // only include the selected component's file for codebase context.
-        //
-        // If we have selected component and smart context is enabled,
-        // we handle this specially below.
-        const chatContext =
-          req.selectedComponent && !isSmartContextEnabled
-            ? {
-                contextPaths: [
-                  {
-                    globPath: req.selectedComponent.relativePath,
-                  },
-                ],
-                smartContextAutoIncludes: [],
-              }
-            : validateChatContext(updatedChat.app.chatContext);
+        const chatContext = req.selectedComponent
+          ? {
+              contextPaths: [
+                {
+                  globPath: req.selectedComponent.relativePath,
+                },
+              ],
+              smartContextAutoIncludes: [],
+            }
+          : validateChatContext(updatedChat.app.chatContext);
+
+        // Parse app mentions from the prompt
+        const mentionedAppNames = parseAppMentions(req.prompt);
 
         // Extract codebase for current app
         const { formattedOutput: codebaseInfo, files } = await extractCodebase({
           appPath,
           chatContext,
         });
-
-        // For smart context and selected component, we will mark the selected component's file as focused.
-        // This means that we don't do the regular smart context handling, but we'll allow fetching
-        // additional files through <dyad-read> as needed.
-        if (isSmartContextEnabled && req.selectedComponent) {
-          for (const file of files) {
-            if (file.path === req.selectedComponent.relativePath) {
-              file.focused = true;
-            }
-          }
-        }
-
-        // Parse app mentions from the prompt
-        const mentionedAppNames = parseAppMentions(req.prompt);
 
         // Extract codebases for mentioned apps
         const mentionedAppsCodebases = await extractMentionedAppsCodebases(
@@ -511,6 +670,11 @@ ${componentSnippet}
           codebaseInfo.length,
           "estimated tokens",
           codebaseInfo.length / 4,
+        );
+        const { modelClient, isEngineEnabled } = await getModelClient(
+          settings.selectedModel,
+          settings,
+          files,
         );
 
         // Prepare message history for the AI
@@ -727,11 +891,9 @@ This conversation includes one or more image attachments. When the user uploads 
           tools,
           systemPromptOverride = systemPrompt,
           dyadDisableFiles = false,
-          files,
         }: {
           chatMessages: ModelMessage[];
           modelClient: ModelClient;
-          files: CodebaseFile[];
           tools?: ToolSet;
           systemPromptOverride?: string;
           dyadDisableFiles?: boolean;
@@ -749,7 +911,6 @@ This conversation includes one or more image attachments. When the user uploads 
             "dyad-engine": {
               dyadRequestId,
               dyadDisableFiles,
-              dyadFiles: files,
               dyadMentionedApps: mentionedAppsCodebases.map(
                 ({ files, appName }) => ({
                   appName,
@@ -811,18 +972,25 @@ This conversation includes one or more image attachments. When the user uploads 
             messages: chatMessages.filter((m) => m.content),
             onError: (error: any) => {
               logger.error("Error streaming text:", error);
-              let errorMessage = (error as any)?.error?.message;
+
+              const quotaMessage = extractQuotaError(error);
+
+              let formattedMessage =
+                quotaMessage ??
+                (error as any)?.error?.message ??
+                JSON.stringify(error);
+
               const responseBody = error?.error?.responseBody;
-              if (errorMessage && responseBody) {
-                errorMessage += "\n\nDetails: " + responseBody;
+              if (!quotaMessage && responseBody) {
+                formattedMessage += "\n\nDetails: " + responseBody;
               }
-              const message = errorMessage || JSON.stringify(error);
+
               const requestIdPrefix = isEngineEnabled
                 ? `[Request ID: ${dyadRequestId}] `
                 : "";
               event.sender.send("chat:response:error", {
                 chatId: req.chatId,
-                error: `Sorry, there was an error from the AI: ${requestIdPrefix}${message}`,
+                error: `Sorry, there was an error from the AI: ${requestIdPrefix}${formattedMessage}`,
               });
               // Clean up the abort controller
               activeStreams.delete(req.chatId);
@@ -881,7 +1049,35 @@ This conversation includes one or more image attachments. When the user uploads 
         };
 
         if (settings.selectedChatMode === "agent") {
-          const tools = await getMcpTools(event);
+          // Check if context is still too full for MCP tools
+          let shouldLoadMcpTools = true;
+          if (updatedChat.app?.path) {
+            const contextWindow = await getContextWindow();
+            const codebaseOutput = (
+              await extractCodebase({
+                appPath: getDyadAppPath(updatedChat.app.path),
+                chatContext: validateChatContext(updatedChat.app.chatContext),
+              })
+            ).formattedOutput;
+            const codebaseTokens = estimateTokens(codebaseOutput);
+            const messageTokens = estimateMessagesTokens(updatedChat.messages);
+            const totalTokens = codebaseTokens + messageTokens;
+            const usageRatio = totalTokens / contextWindow;
+
+            // Don't load MCP tools if we're over 80% to reduce token usage
+            if (usageRatio > AUTO_SUMMARY_TRIGGER_RATIO) {
+              shouldLoadMcpTools = false;
+              logger.warn(
+                `Skipping MCP tools due to high context usage: ${(usageRatio * 100).toFixed(1)}% (${totalTokens}/${contextWindow} tokens)`,
+              );
+            } else {
+              logger.log(
+                `Context usage is acceptable (${(usageRatio * 100).toFixed(1)}%), MCP tools will be available`,
+              );
+            }
+          }
+
+          const tools = shouldLoadMcpTools ? await getMcpTools(event) : {};
 
           const { fullStream } = await simpleStreamText({
             chatMessages: limitedHistoryChatMessages,
@@ -899,7 +1095,6 @@ This conversation includes one or more image attachments. When the user uploads 
               aiRules: await readAiRules(getDyadAppPath(updatedChat.app.path)),
               chatMode: "agent",
             }),
-            files: files,
             dyadDisableFiles: true,
           });
 
@@ -925,7 +1120,6 @@ This conversation includes one or more image attachments. When the user uploads 
         const { fullStream } = await simpleStreamText({
           chatMessages,
           modelClient,
-          files: files,
         });
 
         // Process the stream as before
@@ -962,7 +1156,6 @@ This conversation includes one or more image attachments. When the user uploads 
                   { role: "assistant", content: fullResponse },
                 ],
                 modelClient,
-                files: files,
               });
               for await (const part of contStream) {
                 // If the stream was aborted, exit early
@@ -1044,11 +1237,11 @@ ${problemReport.problems
                 const { modelClient } = await getModelClient(
                   settings.selectedModel,
                   settings,
+                  files,
                 );
 
                 const { fullStream } = await simpleStreamText({
                   modelClient,
-                  files: files,
                   chatMessages: [
                     ...chatMessages.map((msg, index) => {
                       if (
@@ -1156,7 +1349,6 @@ ${problemReport.problems
           .update(messages)
           .set({ content: fullResponse })
           .where(eq(messages.id, placeholderAssistantMessage.id));
-        const settings = readSettings();
         if (
           settings.autoApproveChanges &&
           settings.selectedChatMode !== "ask"
@@ -1203,6 +1395,47 @@ ${problemReport.problems
             chatId: req.chatId,
             updatedFiles: false,
           } satisfies ChatResponseEnd);
+        }
+      }
+
+      if (
+        !abortController.signal.aborted &&
+        settings.enableAutoSummaries &&
+        settings.selectedChatMode !== "ask"
+      ) {
+        const refreshedChatRecord = await db.query.chats.findFirst({
+          where: eq(chats.id, req.chatId),
+          with: {
+            messages: {
+              orderBy: (messages, { asc }) => [asc(messages.createdAt)],
+            },
+            app: true,
+          },
+        });
+
+        if (refreshedChatRecord?.app) {
+          const refreshedChat: LoadedChat = {
+            id: refreshedChatRecord.id,
+            title: refreshedChatRecord.title,
+            createdAt: refreshedChatRecord.createdAt,
+            appId: refreshedChatRecord.appId,
+            initialCommitHash: refreshedChatRecord.initialCommitHash,
+            messages: refreshedChatRecord.messages,
+            app: {
+              path: refreshedChatRecord.app.path,
+              chatContext: refreshedChatRecord.app.chatContext,
+            },
+          };
+
+          const autoSummaryAfterResponse = await maybeAutoSummarizeChat({
+            chat: refreshedChat,
+            settings,
+            sender: event.sender,
+            baseCodebaseTokens,
+          });
+
+          baseCodebaseTokens =
+            autoSummaryAfterResponse.baseCodebaseTokens ?? baseCodebaseTokens;
         }
       }
 
@@ -1333,6 +1566,201 @@ async function replaceTextAttachmentWithContent(
     logger.error(`Error processing text file: ${error}`);
     return text;
   }
+}
+
+type LoadedChat = {
+  id: number;
+  title: string | null;
+  createdAt: Date;
+  appId: number;
+  initialCommitHash: string | null;
+  messages: { id: number; role: "user" | "assistant"; content: string }[];
+  app: { path: string; chatContext: unknown } | null;
+};
+
+async function maybeAutoSummarizeChat({
+  chat,
+  settings,
+  sender,
+  baseCodebaseTokens,
+}: {
+  chat: LoadedChat;
+  settings: UserSettings;
+  sender: WebContents;
+  baseCodebaseTokens?: number;
+}): Promise<{
+  summarized: boolean;
+  chat: LoadedChat;
+  baseCodebaseTokens?: number;
+}> {
+  let summarized = false;
+  let currentChat = chat;
+
+  if (!settings.enableAutoSummaries) {
+    return {
+      summarized: false,
+      chat: currentChat,
+      baseCodebaseTokens,
+    };
+  }
+
+  if (!currentChat.app?.path) {
+    return {
+      summarized: false,
+      chat: currentChat,
+      baseCodebaseTokens,
+    };
+  }
+
+  const contextWindow = await getContextWindow();
+  let effectiveBaseTokens = baseCodebaseTokens;
+  if (effectiveBaseTokens === undefined) {
+    const initialCodebaseTokens = (
+      await extractCodebase({
+        appPath: getDyadAppPath(currentChat.app.path),
+        chatContext: validateChatContext(currentChat.app.chatContext),
+      })
+    ).formattedOutput;
+    effectiveBaseTokens = estimateTokens(initialCodebaseTokens);
+  }
+
+  let passes = 0;
+
+  const triggerTotalThreshold = contextWindow * AUTO_SUMMARY_TRIGGER_RATIO;
+  const targetTotalThreshold = contextWindow * AUTO_SUMMARY_TARGET_RATIO;
+
+  let messageTokens = estimateMessagesTokens(currentChat.messages);
+  let totalTokens = (effectiveBaseTokens ?? 0) + messageTokens;
+
+  if (
+    totalTokens <= triggerTotalThreshold ||
+    messageTokens <= targetTotalThreshold ||
+    (effectiveBaseTokens ?? 0) >= triggerTotalThreshold
+  ) {
+    return {
+      summarized: false,
+      chat: currentChat,
+      baseCodebaseTokens: effectiveBaseTokens,
+    };
+  }
+
+  while (passes < AUTO_SUMMARY_MAX_PASSES) {
+    if (currentChat.messages.length <= AUTO_SUMMARY_MIN_TAIL_MESSAGES + 1) {
+      break;
+    }
+
+    messageTokens = estimateMessagesTokens(currentChat.messages);
+    totalTokens = (effectiveBaseTokens ?? 0) + messageTokens;
+
+    const thresholdRatio = summarized
+      ? AUTO_SUMMARY_TARGET_RATIO
+      : AUTO_SUMMARY_TRIGGER_RATIO;
+
+    if (
+      totalTokens <= contextWindow * thresholdRatio ||
+      messageTokens <= targetTotalThreshold ||
+      (effectiveBaseTokens ?? 0) >= contextWindow * thresholdRatio
+    ) {
+      break;
+    }
+
+    const cutoffIndex = currentChat.messages.length - AUTO_SUMMARY_MIN_TAIL_MESSAGES;
+
+    const messagesToSummarize = currentChat.messages.slice(0, cutoffIndex);
+    const messageIdsToDelete = messagesToSummarize.map((message) => message.id);
+
+    if (
+      messageIdsToDelete.length === 0 ||
+      messagesToSummarize.every((msg) => msg.role !== "assistant")
+    ) {
+      break;
+    }
+
+    const formattedSummaryInput = formatMessagesForSummary(
+      messagesToSummarize.map((message) => ({
+        role: message.role,
+        content: message.content,
+      })),
+    );
+
+    try {
+      passes += 1;
+      const { modelClient } = await getModelClient(
+        settings.selectedModel,
+        settings,
+      );
+
+      const { fullStream } = await streamText({
+        model: modelClient.model,
+        messages: [
+          { role: "system", content: SUMMARIZE_CHAT_SYSTEM_PROMPT },
+          {
+            role: "user",
+            content: `Summarize the following chat:\n${formattedSummaryInput}`,
+          },
+        ],
+      });
+
+      let summary = "";
+      for await (const part of fullStream) {
+        if (part.type === "text-delta") {
+          summary += part.text;
+        }
+      }
+
+      summary = summary.trim();
+
+      if (!summary) {
+        break;
+      }
+
+      await db.delete(messages).where(inArray(messages.id, messageIdsToDelete));
+
+      await db.insert(messages).values({
+        chatId: currentChat.id,
+        role: "assistant",
+        content: `📝 Auto-summary (context trimmed):\n\n${summary}`,
+      });
+
+      summarized = true;
+
+      currentChat =
+        (await db.query.chats.findFirst({
+          where: eq(chats.id, currentChat.id),
+          with: {
+            messages: {
+              orderBy: (messages, { asc }) => [asc(messages.createdAt)],
+            },
+            app: true,
+          },
+        })) ?? currentChat;
+
+      safeSend(sender, "chat:response:chunk", {
+        chatId: currentChat.id,
+        messages: currentChat.messages,
+      });
+
+      logger.info(
+        `Auto summarized chat ${currentChat.id}. Removed ${messageIdsToDelete.length} messages.`,
+      );
+    } catch (error) {
+      logger.error(`Failed to auto summarize chat ${currentChat.id}:`, error);
+      break;
+    }
+
+    messageTokens = estimateMessagesTokens(currentChat.messages);
+    totalTokens = (effectiveBaseTokens ?? 0) + messageTokens;
+
+    if (
+      totalTokens <= targetTotalThreshold ||
+      messageTokens <= targetTotalThreshold ||
+      (effectiveBaseTokens ?? 0) >= targetTotalThreshold
+    ) {
+      break;
+    }
+  }
+
+  return { summarized, chat: currentChat, baseCodebaseTokens: effectiveBaseTokens };
 }
 
 // Helper function to convert traditional message to one with proper image attachments

@@ -13,5 +13,8 @@ export function handleDyadProReturn({ apiKey }: { apiKey: string }) {
       },
     },
     enableDyadPro: true,
+    enableProSmartFilesContextMode: true,
+    enableProLazyEditsMode: true,
+    proSmartContextOption: settings.proSmartContextOption ?? "balanced",
   });
 }

@@ -1,56 +1,46 @@
 import {
-  selectedAppIdAtom,
-  appUrlAtom,
   appOutputAtom,
+  appUrlAtom,
   previewErrorMessageAtom,
+  selectedAppIdAtom,
 } from "@/atoms/appAtoms";
-import { useAtomValue, useSetAtom, useAtom } from "jotai";
-import { useEffect, useRef, useState } from "react";
+import { selectedChatIdAtom } from "@/atoms/chatAtoms";
+import { IpcClient } from "@/ipc/ipc_client";
+import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import {
   ArrowLeft,
   ArrowRight,
-  RefreshCw,
-  ExternalLink,
-  Loader2,
-  X,
-  Sparkles,
   ChevronDown,
-  Lightbulb,
   ChevronRight,
+  ExternalLink,
+  Lightbulb,
+  Loader2,
   MousePointerClick,
   Power,
-  MonitorSmartphone,
-  Monitor,
-  Tablet,
-  Smartphone,
+  RefreshCw,
+  Sparkles,
+  X,
 } from "lucide-react";
-import { selectedChatIdAtom } from "@/atoms/chatAtoms";
-import { IpcClient } from "@/ipc/ipc_client";
+import { useEffect, useRef, useState } from "react";
 
-import { useParseRouter } from "@/hooks/useParseRouter";
+import { selectedComponentPreviewAtom } from "@/atoms/previewAtoms";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useStreamChat } from "@/hooks/useStreamChat";
-import { selectedComponentPreviewAtom } from "@/atoms/previewAtoms";
-import { ComponentSelection } from "@/ipc/ipc_types";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { useParseRouter } from "@/hooks/useParseRouter";
 import { useRunApp } from "@/hooks/useRunApp";
 import { useShortcut } from "@/hooks/useShortcut";
+import { useStreamChat } from "@/hooks/useStreamChat";
+import { ComponentSelection } from "@/ipc/ipc_types";
 import { cn } from "@/lib/utils";
 
 interface ErrorBannerProps {
@@ -107,9 +97,8 @@ const ErrorBanner = ({ error, onDismiss, onAIFix }: ErrorBannerProps) => {
         >
           <ChevronRight
             size={14}
-            className={`mt-0.5 transform transition-transform ${
-              isCollapsed ? "" : "rotate-90"
-            }`}
+            className={`mt-0.5 transform transition-transform ${isCollapsed ? "" : "rotate-90"
+              }`}
           />
           {isCollapsed ? getTruncatedError() : error.message}
         </div>
@@ -175,17 +164,6 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [isPicking, setIsPicking] = useState(false);
 
-  // Device mode state
-  type DeviceMode = "desktop" | "tablet" | "mobile";
-  const [deviceMode, setDeviceMode] = useState<DeviceMode>("desktop");
-  const [isDevicePopoverOpen, setIsDevicePopoverOpen] = useState(false);
-
-  // Device configurations
-  const deviceWidthConfig = {
-    tablet: 768,
-    mobile: 375,
-  };
-
   //detect if the user is using Mac
   const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
 
@@ -216,7 +194,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       }
 
       if (event.data?.type === "dyad-component-selected") {
-        console.log("Component picked:", event.data);
+        
         setSelectedComponentPreview(parseComponentSelection(event.data));
         setIsPicking(false);
         return;
@@ -224,12 +202,12 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
 
       const { type, payload } = event.data as {
         type:
-          | "window-error"
-          | "unhandled-rejection"
-          | "iframe-sourcemapped-error"
-          | "build-error-report"
-          | "pushState"
-          | "replaceState";
+        | "window-error"
+        | "unhandled-rejection"
+        | "iframe-sourcemapped-error"
+        | "build-error-report"
+        | "pushState"
+        | "replaceState";
         payload?: {
           message?: string;
           stack?: string;
@@ -249,9 +227,8 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
           type === "iframe-sourcemapped-error"
             ? payload?.stack?.split("\n").slice(0, 1).join("\n")
             : payload?.stack;
-        const errorMessage = `Error ${
-          payload?.message || payload?.reason
-        }\nStack trace: ${stack}`;
+        const errorMessage = `Error ${payload?.message || payload?.reason
+          }\nStack trace: ${stack}`;
         console.error("Iframe error:", errorMessage);
         setErrorMessage({ message: errorMessage, source: "preview-app" });
         setAppOutput((prev) => [
@@ -362,9 +339,12 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       );
 
       // Update our local state
-      setCurrentHistoryPosition((prev) => prev - 1);
-      setCanGoBack(currentHistoryPosition - 1 > 0);
-      setCanGoForward(true);
+      setCurrentHistoryPosition((prev) => {
+        const newPosition = prev - 1;
+        setCanGoBack(newPosition > 0);
+        setCanGoForward(true);
+        return newPosition;
+      });
     }
   };
 
@@ -380,11 +360,12 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       );
 
       // Update our local state
-      setCurrentHistoryPosition((prev) => prev + 1);
-      setCanGoBack(true);
-      setCanGoForward(
-        currentHistoryPosition + 1 < navigationHistory.length - 1,
-      );
+      setCurrentHistoryPosition((prev) => {
+        const newPosition = prev + 1;
+        setCanGoBack(true);
+        setCanGoForward(newPosition < navigationHistory.length - 1);
+        return newPosition;
+      });
     }
   };
 
@@ -463,11 +444,10 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
               <TooltipTrigger asChild>
                 <button
                   onClick={handleActivateComponentSelector}
-                  className={`p-1 rounded transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${
-                    isPicking
+                  className={`p-1 rounded transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${isPicking
                       ? "bg-purple-500 text-white hover:bg-purple-600 dark:bg-purple-600 dark:hover:bg-purple-700"
                       : " text-purple-700 hover:bg-purple-200  dark:text-purple-300 dark:hover:bg-purple-900"
-                  }`}
+                    }`}
                   disabled={
                     loading || !selectedAppId || !isComponentSelectorInitialized
                   }
@@ -520,7 +500,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                 <span className="truncate flex-1 mr-2 min-w-0">
                   {navigationHistory[currentHistoryPosition]
                     ? new URL(navigationHistory[currentHistoryPosition])
-                        .pathname
+                      .pathname
                     : "/"}
                 </span>
                 <ChevronDown size={14} className="flex-shrink-0" />
@@ -568,85 +548,6 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
           >
             <ExternalLink size={16} />
           </button>
-
-          {/* Device Mode Button */}
-          <Popover open={isDevicePopoverOpen} modal={false}>
-            <PopoverTrigger asChild>
-              <button
-                data-testid="device-mode-button"
-                onClick={() => {
-                  // Toggle popover open/close
-                  if (isDevicePopoverOpen) setDeviceMode("desktop");
-                  setIsDevicePopoverOpen(!isDevicePopoverOpen);
-                }}
-                className={cn(
-                  "p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 dark:text-gray-300",
-                  deviceMode !== "desktop" && "bg-gray-200 dark:bg-gray-700",
-                )}
-                title="Device Mode"
-              >
-                <MonitorSmartphone size={16} />
-              </button>
-            </PopoverTrigger>
-            <PopoverContent
-              className="w-auto p-2"
-              onOpenAutoFocus={(e) => e.preventDefault()}
-              onInteractOutside={(e) => e.preventDefault()}
-            >
-              <TooltipProvider>
-                <ToggleGroup
-                  type="single"
-                  value={deviceMode}
-                  onValueChange={(value) => {
-                    if (value) {
-                      setDeviceMode(value as DeviceMode);
-                      setIsDevicePopoverOpen(false);
-                    }
-                  }}
-                  variant="outline"
-                >
-                  {/* Tooltips placed inside items instead of wrapping 
-                  to avoid asChild prop merging that breaks highlighting */}
-                  <ToggleGroupItem value="desktop" aria-label="Desktop view">
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <span className="flex items-center justify-center">
-                          <Monitor size={16} />
-                        </span>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>Desktop</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </ToggleGroupItem>
-                  <ToggleGroupItem value="tablet" aria-label="Tablet view">
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <span className="flex items-center justify-center">
-                          <Tablet size={16} className="scale-x-130" />
-                        </span>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>Tablet</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </ToggleGroupItem>
-                  <ToggleGroupItem value="mobile" aria-label="Mobile view">
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <span className="flex items-center justify-center">
-                          <Smartphone size={16} />
-                        </span>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>Mobile</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </ToggleGroupItem>
-                </ToggleGroup>
-              </TooltipProvider>
-            </PopoverContent>
-          </Popover>
         </div>
       </div>
 
@@ -672,31 +573,19 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
             </p>
           </div>
         ) : (
-          <div
-            className={cn(
-              "w-full h-full",
-              deviceMode !== "desktop" && "flex justify-center",
-            )}
-          >
-            <iframe
-              sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals allow-orientation-lock allow-pointer-lock allow-presentation allow-downloads"
-              data-testid="preview-iframe-element"
-              onLoad={() => {
-                setErrorMessage(undefined);
-              }}
-              ref={iframeRef}
-              key={reloadKey}
-              title={`Preview for App ${selectedAppId}`}
-              className="w-full h-full border-none bg-white dark:bg-gray-950"
-              style={
-                deviceMode == "desktop"
-                  ? {}
-                  : { width: `${deviceWidthConfig[deviceMode]}px` }
-              }
-              src={appUrl}
-              allow="clipboard-read; clipboard-write; fullscreen; microphone; camera; display-capture; geolocation; autoplay; picture-in-picture"
-            />
-          </div>
+          <iframe
+            sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals allow-orientation-lock allow-pointer-lock allow-presentation allow-downloads"
+            data-testid="preview-iframe-element"
+            onLoad={() => {
+              setErrorMessage(undefined);
+            }}
+            ref={iframeRef}
+            key={reloadKey}
+            title={`Preview for App ${selectedAppId}`}
+            className="w-full h-full border-none bg-white dark:bg-gray-950"
+            src={appUrl}
+            allow="clipboard-read; clipboard-write; fullscreen; microphone; camera; display-capture; geolocation; autoplay; picture-in-picture"
+          />
         )}
       </div>
     </div>

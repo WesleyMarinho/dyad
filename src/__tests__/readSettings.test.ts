@@ -55,6 +55,7 @@ describe("readSettings", () => {
         {
           "enableAutoFixProblems": false,
           "enableAutoUpdate": true,
+          "enableAutoSummaries": false,
           "enableProLazyEditsMode": true,
           "enableProSmartFilesContextMode": true,
           "experiments": {},
